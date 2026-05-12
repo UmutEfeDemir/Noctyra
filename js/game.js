@@ -53,6 +53,10 @@ let animId        = null;
 let gracePeriod   = 0;
 let killMsgTmr        = 0;
 let _winnerToastTimer = 0;
+let _connectError     = false;
+let _connectTimeout   = null;
+let _ping             = 0;
+let _currentRoomCode  = '';
 
 // ── SYSTEMS ───────────────────────────────────────────────────
 let comboCount    = 0;
@@ -60,7 +64,7 @@ let comboTimer    = 0;
 let dayTime       = 0;
 let _prevBoosting = false;
 let highScore     = parseInt(localStorage.getItem('noctyra_hs') || '0');
-const gameStats   = { kills: 0, score: 0, frames: 0, maxLen: 0 };
+const gameStats   = { kills: 0, score: 0, frames: 0, maxLen: 0, maxCombo: 0 };
 
 // Death screen state
 let _deathKiller = null;
@@ -78,7 +82,26 @@ function _cancelLeaveTimer(id) {
 function initSocket() {
     socket = io(SERVER_URL);
 
-    socket.on('room_joined', ({ seed, players }) => {
+    setInterval(() => {
+        if (socket && socket.connected) {
+            const t0 = Date.now();
+            socket.emit('__ping');
+            socket.once('__pong', () => {
+                _ping = Date.now() - t0;
+                const el = document.getElementById('pingDisplay');
+                if (el) {
+                    el.textContent = _ping + ' ms';
+                    el.style.color = _ping < 80 ? '#44FF88' : _ping < 150 ? '#FFD700' : '#FF6644';
+                }
+            });
+        }
+    }, 2000);
+
+    socket.on('room_joined', ({ seed, players, code }) => {
+        if (_connectTimeout) { clearTimeout(_connectTimeout); _connectTimeout = null; }
+        _connectError    = false;
+        _currentRoomCode = code || '';
+        _updateRoomCodeHUD();
         _coinId = 0;             // must be reset BEFORE generateWorld() assigns IDs
         resetWorldSeed(seed);
         generateWorld();
@@ -100,6 +123,7 @@ function initSocket() {
         gracePeriod = SPAWN_GRACE;
         _updateRoomHUD();
         updateRoomLB();
+        _setMobileBoost(true);
     });
 
     socket.on('player_join', p => {
@@ -167,6 +191,7 @@ function initSocket() {
         addToFeed(player?.name || '?', victimName);
         comboCount++;
         comboTimer = 240;
+        if (comboCount > gameStats.maxCombo) gameStats.maxCombo = comboCount;
         const mult       = comboCount >= 3 ? 3 : comboCount >= 2 ? 2 : 1;
         const finalBonus = Math.round(bonus * mult);
 
@@ -190,7 +215,30 @@ function initSocket() {
         }
     });
 
+    socket.on('room_full', () => {
+        if (_connectTimeout) { clearTimeout(_connectTimeout); _connectTimeout = null; }
+        gameState = 'dead';
+        const oc = document.getElementById('overlayContent');
+        if (oc) {
+            const savedName = player?.name || '';
+            oc.innerHTML = `
+                <div style="color:#FF6644;font-size:22px;margin-bottom:14px;">⚠️ Oda Dolu</div>
+                <div style="color:rgba(200,200,200,0.72);font-size:13px;margin-bottom:24px;line-height:1.9">
+                    Bu oda doldu. Başka bir kod dene.
+                </div>
+                <input id="nameInput" type="text" maxlength="15"
+                       placeholder="${t('namePlaceholder')}" value="${savedName}">
+                <input id="roomCodeInput" type="text" maxlength="4"
+                       placeholder="${t('roomCodePlaceholder')}">
+                <button id="startBtn" onclick="startGame()">${t('restartBtn')}</button>
+            `;
+        }
+        document.getElementById('overlay').classList.remove('hidden');
+        showCustomizer();
+    });
+
     socket.on('connect_error', () => {
+        _connectError = true;
         console.warn('[Socket] Sunucuya bağlanılamadı:', SERVER_URL);
     });
 
@@ -274,6 +322,9 @@ function rebuildDeathScreen() {
         <input id="nameInput" type="text" maxlength="15"
                placeholder="${t('namePlaceholder')}"
                value="${player ? player.name : ''}">
+        <input id="roomCodeInput" type="text" maxlength="4"
+               placeholder="${t('roomCodePlaceholder')}"
+               value="${_currentRoomCode}">
         <button id="startBtn" onclick="startGame()">${t('restartBtn')}</button>
 `;
 }
@@ -306,6 +357,7 @@ function playerDie(killedBy) {
 
     screenShake(10, 30);
     gameState = 'spectating';
+    _setMobileBoost(false);
     setTimeout(() => {
         if (gameState !== 'spectating') return;
         gameState = 'dead';
@@ -351,6 +403,24 @@ function checkCoins() {
 function _updateRoomHUD() {
     const el = document.getElementById('roomInfo');
     if (el) el.textContent = `${remotePlayers.size + (player && player.alive ? 1 : 0)}/10 oyuncu`;
+}
+
+function _updateRoomCodeHUD() {
+    const el = document.getElementById('roomCodeHUD');
+    if (!el) return;
+    if (_currentRoomCode) {
+        el.textContent = '🔗 ' + _currentRoomCode;
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+function copyRoomCode() {
+    if (!_currentRoomCode) return;
+    navigator.clipboard.writeText(_currentRoomCode).then(() => {
+        showKillMsg(t('roomCodeCopied'));
+    }).catch(() => {});
 }
 
 function updateRoomLB() {
@@ -405,6 +475,33 @@ function showKillMsg(txt) {
     elKill.style.opacity = '1';
     clearTimeout(killMsgTmr);
     killMsgTmr = setTimeout(() => elKill.style.opacity = '0', 2200);
+}
+
+function _setMobileBoost(visible) {
+    const btn = document.getElementById('mobileBoostBtn');
+    if (!btn) return;
+    btn.style.display = (visible && navigator.maxTouchPoints > 0) ? 'flex' : 'none';
+}
+
+function _showConnectError() {
+    if (gameState !== 'connecting') return;
+    gameState     = 'dead';
+    _connectError = false;
+    const oc = document.getElementById('overlayContent');
+    if (oc) {
+        const savedName = player?.name || '';
+        oc.innerHTML = `
+            <div style="color:#FF6644;font-size:22px;margin-bottom:14px;">⚠️ Sunucuya bağlanılamadı</div>
+            <div style="color:rgba(200,200,200,0.72);font-size:13px;margin-bottom:24px;line-height:1.9">
+                Sunucu geçici olarak kullanılamıyor.<br>Birkaç saniye bekleyip tekrar dene.
+            </div>
+            <input id="nameInput" type="text" maxlength="15"
+                   placeholder="${t('namePlaceholder')}" value="${savedName}">
+            <button id="startBtn" onclick="startGame()">TEKRAR DENE</button>
+        `;
+    }
+    document.getElementById('overlay').classList.remove('hidden');
+    showCustomizer();
 }
 
 function drawKillFeed() {
@@ -488,11 +585,19 @@ function loop() {
     // Connecting overlay
     if (gameState === 'connecting') {
         ctx.save();
-        ctx.fillStyle  = 'rgba(255,255,255,0.65)';
-        ctx.font       = 'bold 22px Georgia';
-        ctx.textAlign  = 'center';
-        ctx.fillText('Sunucuya bağlanıyor...', canvas.width / 2, canvas.height / 2);
-        ctx.textAlign  = 'left';
+        ctx.font      = 'bold 22px Georgia';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = _connectError ? '#FF6644' : 'rgba(255,255,255,0.65)';
+        ctx.fillText(
+            _connectError ? '❌ Sunucuya bağlanılamadı' : 'Sunucuya bağlanıyor...',
+            canvas.width / 2, canvas.height / 2
+        );
+        if (_connectError) {
+            ctx.font      = '15px Georgia';
+            ctx.fillStyle = 'rgba(255,210,160,0.75)';
+            ctx.fillText('Yeniden bağlanılıyor...', canvas.width / 2, canvas.height / 2 + 32);
+        }
+        ctx.textAlign = 'left';
         ctx.restore();
     }
 
@@ -588,8 +693,11 @@ function startGame() {
     _deathScore   = 0;
     _isNewRecord  = false;
     gameStats.kills = 0; gameStats.score  = 0;
-    gameStats.frames = 0; gameStats.maxLen = 0;
-    gameState = 'connecting';  // → 'playing' after room_joined
+    gameStats.frames = 0; gameStats.maxLen = 0; gameStats.maxCombo = 0;
+    gameState     = 'connecting';  // → 'playing' after room_joined
+    _connectError = false;
+    if (_connectTimeout) clearTimeout(_connectTimeout);
+    _connectTimeout = setTimeout(_showConnectError, 8000);
 
     resetAchievements();
     remotePlayers.clear();
@@ -609,11 +717,12 @@ function startGame() {
     // Connect / join room — include actual spawn position so server can relay it
     const config   = { ...playerShipConfig };
     const shipType = playerShipConfig.shipType;
+    const roomCode = (document.getElementById('roomCodeInput')?.value || '').trim().toUpperCase();
     if (!socket) {
         initSocket();
-        socket.once('connect', () => socket.emit('join', { name, config, shipType, x: spawnX, y: spawnY }));
+        socket.once('connect', () => socket.emit('join', { name, config, shipType, x: spawnX, y: spawnY, roomCode }));
     } else {
-        socket.emit('join', { name, config, shipType, x: spawnX, y: spawnY });
+        socket.emit('join', { name, config, shipType, x: spawnX, y: spawnY, roomCode });
     }
 }
 
@@ -627,34 +736,48 @@ document.addEventListener('keyup',     e  => { if (e.code === 'Space') boostActi
 window.addEventListener('blur',        () => { boostActive = false; });
 
 // ── TOUCH (mobile) ────────────────────────────────────────────
+// Dead zone: don't update direction if finger is within 55px of the ship's
+// screen position — prevents erratic steering when touching near the ship centre.
+function _applyTouch(cx, cy) {
+    if (player && player.alive) {
+        const sx = player.x - camera.x;
+        const sy = player.y - camera.y;
+        const dx = cx - sx, dy = cy - sy;
+        if (dx * dx + dy * dy > 55 * 55) { mouse.x = cx; mouse.y = cy; }
+    } else {
+        mouse.x = cx; mouse.y = cy;
+    }
+}
+
 canvas.addEventListener('touchstart', e => {
     e.preventDefault();
     const touch = e.changedTouches[0];
-    _touchId    = touch.identifier;
-    mouse.x     = touch.clientX;
-    mouse.y     = touch.clientY;
-    boostActive = true;
+    _touchId = touch.identifier;
+    _applyTouch(touch.clientX, touch.clientY);
+    // Boost is controlled by mobileBoostBtn, not by canvas touch
 }, { passive: false });
 
 canvas.addEventListener('touchmove', e => {
     e.preventDefault();
     for (const touch of e.changedTouches) {
-        if (touch.identifier === _touchId) {
-            mouse.x = touch.clientX;
-            mouse.y = touch.clientY;
-        }
+        if (touch.identifier === _touchId) _applyTouch(touch.clientX, touch.clientY);
     }
 }, { passive: false });
 
 canvas.addEventListener('touchend', e => {
     e.preventDefault();
     for (const touch of e.changedTouches) {
-        if (touch.identifier === _touchId) {
-            _touchId    = null;
-            boostActive = false;
-        }
+        if (touch.identifier === _touchId) _touchId = null;
     }
 }, { passive: false });
+
+// Boost button — separate from canvas so one finger steers, other boosts
+const _mbb = document.getElementById('mobileBoostBtn');
+if (_mbb) {
+    _mbb.addEventListener('touchstart', e => { e.preventDefault(); boostActive = true;  }, { passive: false });
+    _mbb.addEventListener('touchend',   e => { e.preventDefault(); boostActive = false; }, { passive: false });
+    _mbb.addEventListener('touchcancel',e => { e.preventDefault(); boostActive = false; }, { passive: false });
+}
 
 // ── MENU BACKGROUND ANIMATION ────────────────────────────────
 const _menuShips = [

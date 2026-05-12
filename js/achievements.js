@@ -4,13 +4,24 @@
 // =============================================================
 
 const ACH_DEFS = [
+    // Kill milestones
     { id: 'first_kill',  icon: '⚔️'  },
     { id: 'kills_5',     icon: '🏴‍☠️' },
     { id: 'kills_10',    icon: '💀'  },
+    { id: 'kills_25',    icon: '☠️'  },
+    { id: 'kills_50',    icon: '🩸'  },
+    // Gold milestones
     { id: 'gold_100',    icon: '💰'  },
-    { id: 'gold_500',    icon: '👑'  },
+    { id: 'gold_500',    icon: '💎'  },
+    { id: 'gold_1000',   icon: '🏆'  },
+    { id: 'gold_2500',   icon: '👑'  },
+    // Survival
     { id: 'survive_2m',  icon: '⏱️'  },
+    { id: 'survive_5m',  icon: '🧭'  },
+    { id: 'survive_10m', icon: '🗺️'  },
+    // Special
     { id: 'big_ship',    icon: '🚢'  },
+    { id: 'combo_3',     icon: '🔥'  },
 ];
 
 const _unlocked = new Set();
@@ -24,13 +35,20 @@ function tickAchievements(stats) {
         if (_unlocked.has(def.id)) continue;
         let ok = false;
         switch (def.id) {
-            case 'first_kill': ok = stats.kills  >=  1;   break;
-            case 'kills_5':    ok = stats.kills  >=  5;   break;
-            case 'kills_10':   ok = stats.kills  >= 10;   break;
-            case 'gold_100':   ok = stats.score  >= 100;  break;
-            case 'gold_500':   ok = stats.score  >= 500;  break;
-            case 'survive_2m': ok = stats.frames >= 7200; break;
-            case 'big_ship':   ok = stats.maxLen >= 120;  break;
+            case 'first_kill':  ok = stats.kills    >=     1;     break;
+            case 'kills_5':     ok = stats.kills    >=     5;     break;
+            case 'kills_10':    ok = stats.kills    >=    10;     break;
+            case 'kills_25':    ok = stats.kills    >=    25;     break;
+            case 'kills_50':    ok = stats.kills    >=    50;     break;
+            case 'gold_100':    ok = stats.score    >=   100;     break;
+            case 'gold_500':    ok = stats.score    >=   500;     break;
+            case 'gold_1000':   ok = stats.score    >=  1000;     break;
+            case 'gold_2500':   ok = stats.score    >=  2500;     break;
+            case 'survive_2m':  ok = stats.frames   >=  7200;     break;
+            case 'survive_5m':  ok = stats.frames   >= 18000;     break;
+            case 'survive_10m': ok = stats.frames   >= 36000;     break;
+            case 'big_ship':    ok = stats.maxLen   >=   120;     break;
+            case 'combo_3':     ok = (stats.maxCombo || 0) >= 3;  break;
         }
         if (ok) {
             _unlocked.add(def.id);

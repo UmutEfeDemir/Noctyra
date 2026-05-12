@@ -71,21 +71,50 @@ app.post('/api/achievement', async (req, res) => {
 // rooms: Map<roomId, { players: Map<socketId, data>, seed: number }>
 const rooms = new Map();
 
+// Generate a 4-char room code using unambiguous characters
+function _genCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let c = '';
+    for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+    return c;
+}
+
 function findRoom() {
     for (const [id, room] of rooms) {
         if (room.players.size < MAX_ROOM_SIZE) return id;
     }
-    const id   = 'r' + Date.now().toString(36);
-    const seed = Math.floor(Math.random() * 0xFFFFFF);
-    rooms.set(id, { players: new Map(), seed });
-    return id;
+    let code;
+    do { code = _genCode(); } while (rooms.has(code));
+    rooms.set(code, { players: new Map(), seed: Math.floor(Math.random() * 0xFFFFFF) });
+    return code;
+}
+
+// Simple per-socket rate limiter — rolling 1-second window
+function _makeLimiter(maxPerSec) {
+    let count = 0, windowEnd = 0;
+    return () => {
+        const now = Date.now();
+        if (now >= windowEnd) { count = 0; windowEnd = now + 1000; }
+        return ++count <= maxPerSec;
+    };
 }
 
 // ── Socket.io ─────────────────────────────────────────────────
 io.on('connection', socket => {
     let roomId = null;
+    const rl = {
+        state: _makeLimiter(35),
+        kill:  _makeLimiter(5),
+        coin:  _makeLimiter(15),
+        join:  _makeLimiter(2),
+    };
 
-    socket.on('join', ({ name, config, shipType, x, y }) => {
+    // Ping measurement
+    socket.on('__ping', () => socket.emit('__pong'));
+
+    socket.on('join', ({ name, config, shipType, x, y, roomCode }) => {
+        if (!rl.join()) return;
+
         // Leave previous room cleanly
         if (roomId) {
             const old = rooms.get(roomId);
@@ -98,7 +127,24 @@ io.on('connection', socket => {
             socket.leave(roomId);
         }
 
-        roomId     = findRoom();
+        // Private room code: 4 alphanumeric chars
+        const code = (typeof roomCode === 'string')
+            ? roomCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4)
+            : '';
+
+        if (code.length === 4) {
+            if (!rooms.has(code)) {
+                rooms.set(code, { players: new Map(), seed: Math.floor(Math.random() * 0xFFFFFF) });
+            }
+            if (rooms.get(code).players.size >= MAX_ROOM_SIZE) {
+                socket.emit('room_full');
+                return;
+            }
+            roomId = code;
+        } else {
+            roomId = findRoom();
+        }
+
         const room = rooms.get(roomId);
         const pData = {
             id: socket.id, name, config, shipType,
@@ -109,7 +155,7 @@ io.on('connection', socket => {
         socket.join(roomId);
 
         const others = [...room.players.values()].filter(p => p.id !== socket.id);
-        socket.emit('room_joined', { roomId, seed: room.seed, players: others });
+        socket.emit('room_joined', { roomId, seed: room.seed, players: others, code: roomId });
         socket.to(roomId).emit('player_join', pData);
         io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
 
@@ -117,7 +163,7 @@ io.on('connection', socket => {
     });
 
     socket.on('state', data => {
-        if (!roomId) return;
+        if (!rl.state() || !roomId) return;
         const room = rooms.get(roomId);
         if (!room) return;
         const pd = room.players.get(socket.id);
@@ -126,12 +172,12 @@ io.on('connection', socket => {
     });
 
     socket.on('coin_take', ({ id }) => {
-        if (!roomId) return;
+        if (!rl.coin() || !roomId) return;
         socket.to(roomId).emit('coin_take', { id });
     });
 
     socket.on('coin_add', ({ id, x, y, v }) => {
-        if (!roomId) return;
+        if (!rl.coin() || !roomId) return;
         socket.to(roomId).emit('coin_add', { id, x, y, v });
     });
 
@@ -149,7 +195,7 @@ io.on('connection', socket => {
     });
 
     socket.on('kill', ({ victimId }) => {
-        if (!roomId) return;
+        if (!rl.kill() || !roomId) return;
         const room   = rooms.get(roomId);
         if (!room) return;
         const victim = room.players.get(victimId);
