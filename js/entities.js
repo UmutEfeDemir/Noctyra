@@ -704,10 +704,11 @@ class Island {
 // Extends Ship so all draw methods (_drawGemi, _drawSandal, etc.)
 // are properly inherited as instance methods via super().
 class RemotePlayer extends Ship {
-    constructor(id, name, config, shipType) {
+    constructor(id, name, config, shipType, initX, initY) {
         const ci = Math.floor(Math.random() * SHIP_COLORS.length);
         super(
-            PLAYER_SPAWN_X, PLAYER_SPAWN_Y,
+            initX ?? PLAYER_SPAWN_X,
+            initY ?? PLAYER_SPAWN_Y,
             false,
             ci,
             name,
@@ -715,6 +716,9 @@ class RemotePlayer extends Ship {
             shipType || 'gemi'
         );
         this.id = id;
+        // Clear the seeded trail so existing players don't falsely detect a
+        // new player's trail at spawn — real trail is built from applyState calls.
+        this.trail.trimToNewest(0);
     }
 
     applyState({ x, y, angle, size, score, maxLen, boosting }) {

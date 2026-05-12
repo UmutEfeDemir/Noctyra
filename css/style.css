@@ -72,6 +72,19 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     background: rgba(0,20,40,0.85);
 }
 
+/* ── Volume button ──────────────────────────────────────────── */
+#volBtn {
+    position: fixed; bottom: 192px; right: 20px;
+    width: 36px; height: 36px;
+    background: rgba(4,10,28,0.78);
+    border: 1.5px solid rgba(140,170,230,0.40);
+    color: #C0D0F0; font-size: 17px;
+    border-radius: 8px; cursor: pointer;
+    z-index: 10; transition: background 0.15s;
+    display: flex; align-items: center; justify-content: center;
+}
+#volBtn:hover { background: rgba(20,40,100,0.90); }
+
 /* ── In-game room leaderboard ───────────────────────────────── */
 #roomLB {
     position: fixed; top: 20px; right: 20px;

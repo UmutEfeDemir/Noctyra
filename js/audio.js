@@ -4,6 +4,28 @@
 // =============================================================
 
 let _ac = null;
+let masterVolume = parseFloat(localStorage.getItem('noctyra_vol') ?? '0.7');
+
+function setVolume(v) {
+    masterVolume = Math.max(0, Math.min(1, v));
+    localStorage.setItem('noctyra_vol', masterVolume);
+    _updateVolBtn();
+}
+
+function _updateVolBtn() {
+    const btn = document.getElementById('volBtn');
+    if (!btn) return;
+    if (masterVolume === 0)      btn.textContent = '🔇';
+    else if (masterVolume < 0.4) btn.textContent = '🔈';
+    else if (masterVolume < 0.8) btn.textContent = '🔉';
+    else                         btn.textContent = '🔊';
+}
+
+function cycleVolume() {
+    if      (masterVolume >= 0.8) setVolume(0.4);
+    else if (masterVolume >= 0.4) setVolume(0);
+    else                          setVolume(0.8);
+}
 
 function _getAC() {
     if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -12,6 +34,7 @@ function _getAC() {
 }
 
 function playSound(type) {
+    if (masterVolume === 0) return;
     try {
         const ac = _getAC();
         const t  = ac.currentTime;
@@ -21,7 +44,6 @@ function playSound(type) {
             case 'kill':  _sKill (ac, t); break;
             case 'die':   _sDie  (ac, t); break;
             case 'hit':   _sHit  (ac, t); break;
-            case 'boost': _sBoost(ac, t); break;
         }
     } catch (_) {}
 }
@@ -33,7 +55,7 @@ function _osc(ac, t, type, freq, dur, vol) {
     o.connect(g); g.connect(ac.destination);
     o.type = type;
     o.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol * masterVolume, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.start(t); o.stop(t + dur + 0.02);
     return o;
@@ -55,33 +77,31 @@ function _noise(ac, t, dur, cutoff, vol) {
     src.buffer = buf;
     lp.frequency.value = cutoff;
     src.connect(lp); lp.connect(g); g.connect(ac.destination);
-    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol * masterVolume, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     src.start(t);
 }
 
 // ── sound definitions ─────────────────────────────────────────
-function _sCoin(ac, t) {
-    _sweep(ac, t, 'sine', 880, 1200, 0.11, 0.14);
-}
+function _sCoin(ac, t)  { _sweep(ac, t, 'sine', 880, 1200, 0.11, 0.14); }
 
 function _sChest(ac, t) {
-    _osc(ac, t,        'sine', 523.25, 0.45, 0.16);
-    _osc(ac, t,        'sine', 659.25, 0.45, 0.12);
-    _osc(ac, t,        'sine', 783.99, 0.45, 0.09);
-    _sweep(ac, t+0.05, 'sine', 1046, 1400, 0.38, 0.07);
+    _osc  (ac, t,        'sine', 523.25, 0.45, 0.16);
+    _osc  (ac, t,        'sine', 659.25, 0.45, 0.12);
+    _osc  (ac, t,        'sine', 783.99, 0.45, 0.09);
+    _sweep(ac, t + 0.05, 'sine', 1046, 1400, 0.38, 0.07);
 }
 
 function _sKill(ac, t) {
-    _sweep(ac, t,       'sawtooth', 140, 55, 0.45, 0.22);
-    _osc  (ac, t+0.04,  'square',   80,  0.3, 0.14);
-    _noise(ac, t,       0.35, 500, 0.16);
+    _sweep(ac, t,        'sawtooth', 140, 55, 0.45, 0.22);
+    _osc  (ac, t + 0.04, 'square',   80,  0.3, 0.14);
+    _noise(ac, t,        0.35, 500, 0.16);
 }
 
 function _sDie(ac, t) {
-    _sweep(ac, t,       'sine',     440, 75, 0.9, 0.20);
-    _sweep(ac, t+0.1,   'sawtooth', 220, 40, 0.7, 0.10);
-    _noise(ac, t,       0.55, 280, 0.13);
+    _sweep(ac, t,        'sine',     440, 75, 0.9, 0.20);
+    _sweep(ac, t + 0.1,  'sawtooth', 220, 40, 0.7, 0.10);
+    _noise(ac, t,        0.55, 280, 0.13);
 }
 
 function _sHit(ac, t) {
@@ -91,3 +111,6 @@ function _sHit(ac, t) {
 
 function startBoostSound() {}
 function stopBoostSound()  {}
+
+// Init button state once DOM is ready
+document.addEventListener('DOMContentLoaded', _updateVolBtn);

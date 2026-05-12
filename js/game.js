@@ -26,6 +26,23 @@ let coins         = [];
 let particles     = [];
 let islands       = [];
 let _coinId       = 0;           // global coin ID counter (reset by generateWorld)
+
+// ── SCREEN SHAKE ──────────────────────────────────────────────
+let _shakeAmt = 0, _shakeFrames = 0;
+function screenShake(amt, frames) {
+    _shakeAmt    = Math.max(_shakeAmt, amt);
+    _shakeFrames = Math.max(_shakeFrames, frames);
+}
+
+// ── KILL FEED ─────────────────────────────────────────────────
+const _killFeed = [];
+function addToFeed(killer, victim) {
+    _killFeed.unshift({ killer, victim, timer: 280 });
+    if (_killFeed.length > 6) _killFeed.pop();
+}
+
+// ── MOBILE TOUCH ─────────────────────────────────────────────
+let _touchId = null;
 let camera        = { x: 0, y: 0 };
 let mouse         = { x: 400, y: 300 };
 let boostActive   = false;
@@ -34,7 +51,8 @@ let frame         = 0;
 let waveT         = 0;
 let animId        = null;
 let gracePeriod   = 0;
-let killMsgTmr    = 0;
+let killMsgTmr        = 0;
+let _winnerToastTimer = 0;
 
 // ── SYSTEMS ───────────────────────────────────────────────────
 let comboCount    = 0;
@@ -64,14 +82,18 @@ function initSocket() {
         _coinId = 0;             // must be reset BEFORE generateWorld() assigns IDs
         resetWorldSeed(seed);
         generateWorld();
+        // Each client gets a unique large offset for replacement coin IDs so
+        // concurrent collections by different players never produce the same ID.
+        _coinId = (COIN_TARGET + CHEST_TARGET) + Math.floor(Math.random() * 0x3FFFFFFF);
 
         // Cancel any pending removal timers and clear old remote players
         _leaveTimers.forEach(t => clearTimeout(t));
         _leaveTimers.clear();
         remotePlayers.clear();
 
+        // Use actual positions from server so RemotePlayers start in the right place
         for (const p of players) {
-            remotePlayers.set(p.id, new RemotePlayer(p.id, p.name, p.config, p.shipType));
+            remotePlayers.set(p.id, new RemotePlayer(p.id, p.name, p.config, p.shipType, p.x, p.y));
         }
 
         gameState   = 'playing';
@@ -83,8 +105,10 @@ function initSocket() {
     socket.on('player_join', p => {
         // Cancel any death-removal timer for this id (player restarted quickly)
         _cancelLeaveTimer(p.id);
-        remotePlayers.set(p.id, new RemotePlayer(p.id, p.name, p.config, p.shipType));
+        // Use actual spawn position from server data
+        remotePlayers.set(p.id, new RemotePlayer(p.id, p.name, p.config, p.shipType, p.x, p.y));
         _updateRoomHUD();
+        updateRoomLB();
     });
 
     socket.on('player_state', ({ id, ...data }) => {
@@ -103,6 +127,7 @@ function initSocket() {
             if (rp.alive) {
                 rp.alive = false;
                 spawnExplosion(rp.x, rp.y);
+                if (killedBy && killedBy !== player?.name) addToFeed(killedBy, rp.name);
                 const t = setTimeout(() => { remotePlayers.delete(id); _leaveTimers.delete(id); }, 4000);
                 _leaveTimers.set(id, t);
             }
@@ -138,6 +163,8 @@ function initSocket() {
 
     socket.on('kill_confirmed', ({ victimName, victimMaxLen, bonus }) => {
         playSound('kill');
+        screenShake(6, 18);
+        addToFeed(player?.name || '?', victimName);
         comboCount++;
         comboTimer = 240;
         const mult       = comboCount >= 3 ? 3 : comboCount >= 2 ? 2 : 1;
@@ -156,10 +183,31 @@ function initSocket() {
         updateComboDisplay();
     });
 
-    socket.on('room_info', _updateRoomHUD);
+    socket.on('room_info', data => {
+        _updateRoomHUD();
+        if (data && data.count === 1 && player && player.alive && gameState === 'playing') {
+            _winnerToastTimer = 300;
+        }
+    });
 
     socket.on('connect_error', () => {
         console.warn('[Socket] Sunucuya bağlanılamadı:', SERVER_URL);
+    });
+
+    socket.on('disconnect', () => {
+        console.warn('[Socket] Sunucu bağlantısı kesildi, yeniden bağlanılıyor...');
+    });
+
+    socket.io.on('reconnect', () => {
+        if ((gameState === 'playing' || gameState === 'connecting') && player) {
+            socket.emit('join', {
+                name:     player.name,
+                config:   { ...playerShipConfig },
+                shipType: playerShipConfig.shipType,
+                x: player.x,
+                y: player.y,
+            });
+        }
     });
 }
 
@@ -256,14 +304,15 @@ function playerDie(killedBy) {
         localStorage.setItem('noctyra_hs', highScore);
     }
 
-    gameState = 'dead';
-    rebuildDeathScreen();
-    document.getElementById('overlay').classList.remove('hidden');
-    showCustomizer();
-
-    if (typeof dbSaveScore === 'function') {
-        dbSaveScore(player.name, _deathScore, gameStats.kills).catch(() => {});
-    }
+    screenShake(10, 30);
+    gameState = 'spectating';
+    setTimeout(() => {
+        if (gameState !== 'spectating') return;
+        gameState = 'dead';
+        rebuildDeathScreen();
+        document.getElementById('overlay').classList.remove('hidden');
+        showCustomizer();
+    }, 3000);
 }
 
 // ── COIN COLLECTION ──────────────────────────────────────────
@@ -306,7 +355,7 @@ function _updateRoomHUD() {
 
 function updateRoomLB() {
     const el = document.getElementById('roomLB');
-    if (!el || gameState !== 'playing') { if (el) el.innerHTML = ''; return; }
+    if (!el || (gameState !== 'playing' && gameState !== 'spectating')) { if (el) el.innerHTML = ''; return; }
 
     const entries = [];
     if (player && player.alive) entries.push({ name: player.name, score: player.score, isMe: true });
@@ -358,6 +407,30 @@ function showKillMsg(txt) {
     killMsgTmr = setTimeout(() => elKill.style.opacity = '0', 2200);
 }
 
+function drawKillFeed() {
+    if (_killFeed.length === 0) return;
+    for (let i = _killFeed.length - 1; i >= 0; i--) {
+        _killFeed[i].timer--;
+        if (_killFeed[i].timer <= 0) _killFeed.splice(i, 1);
+    }
+    if (_killFeed.length === 0) return;
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font      = 'bold 13px Georgia';
+    let y = canvas.height - 80;
+    for (let i = _killFeed.length - 1; i >= 0; i--) {
+        const e = _killFeed[i];
+        const a = Math.min(1, e.timer / 40);
+        ctx.globalAlpha = a;
+        const txt = `${e.killer} ⚔ ${e.victim}`;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillText(txt, 21, y + 1);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText(txt, 20, y);
+        y -= 22;
+    }
+    ctx.restore();
+}
 
 // ── MAIN LOOP ─────────────────────────────────────────────────
 function loop() {
@@ -368,6 +441,14 @@ function loop() {
     if (player && player.alive) {
         camera.x = clamp(player.x - canvas.width  / 2, 0, WORLD_W - canvas.width);
         camera.y = clamp(player.y - canvas.height / 2, 0, WORLD_H - canvas.height);
+    }
+
+    const _shaking = _shakeFrames > 0;
+    if (_shaking) {
+        ctx.save();
+        ctx.translate((Math.random() - 0.5) * _shakeAmt * 2, (Math.random() - 0.5) * _shakeAmt * 2);
+        _shakeAmt    *= 0.85;
+        _shakeFrames--;
     }
 
     drawOcean();
@@ -422,6 +503,8 @@ function loop() {
         if (p.life <= 0) particles.splice(i, 1); else p.draw();
     }
 
+    if (_shaking) ctx.restore();
+
     if (gameState === 'playing') {
         checkCollisions();
         checkCoins();
@@ -441,6 +524,36 @@ function loop() {
         if (frame % 60 === 0) updateRoomLB();
     }
 
+    if (gameState === 'spectating' && frame % 60 === 0) updateRoomLB();
+
+    // Spectating overlay
+    if (gameState === 'spectating') {
+        ctx.save();
+        ctx.fillStyle = 'rgba(220,220,255,0.55)';
+        ctx.font      = 'bold 20px Georgia';
+        ctx.textAlign = 'center';
+        ctx.fillText(t('spectating'), canvas.width / 2, canvas.height / 2 + 60);
+        ctx.textAlign = 'left';
+        ctx.restore();
+    }
+
+    // Winner toast
+    if (_winnerToastTimer > 0) {
+        _winnerToastTimer--;
+        const _wa = Math.min(1, _winnerToastTimer / 40);
+        ctx.save();
+        ctx.globalAlpha = _wa;
+        ctx.fillStyle   = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(canvas.width / 2 - 185, canvas.height / 2 - 40, 370, 66);
+        ctx.fillStyle = '#FFD700';
+        ctx.font      = 'bold 28px Georgia';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏆 ' + t('winner'), canvas.width / 2, canvas.height / 2 + 4);
+        ctx.textAlign = 'left';
+        ctx.restore();
+    }
+
+    drawKillFeed();
     drawMinimap();
     animId = requestAnimationFrame(loop);
 }
@@ -459,7 +572,10 @@ function startGame() {
     document.getElementById('overlay').classList.add('hidden');
     hideCustomizer();
 
-    player = new Ship(PLAYER_SPAWN_X, PLAYER_SPAWN_Y, true, 0, name, { ...playerShipConfig }, playerShipConfig.shipType);
+    // Random spawn — avoids all players piling on the same point
+    const spawnX = rnd(400, WORLD_W - 400);
+    const spawnY = rnd(400, WORLD_H - 400);
+    player = new Ship(spawnX, spawnY, true, 0, name, { ...playerShipConfig }, playerShipConfig.shipType);
 
     boostEnergy   = BOOST_MAX;
     boostActive   = false;
@@ -490,14 +606,14 @@ function startGame() {
     if (animId) cancelAnimationFrame(animId);
     loop();
 
-    // Connect / join room
+    // Connect / join room — include actual spawn position so server can relay it
     const config   = { ...playerShipConfig };
     const shipType = playerShipConfig.shipType;
     if (!socket) {
         initSocket();
-        socket.once('connect', () => socket.emit('join', { name, config, shipType }));
+        socket.once('connect', () => socket.emit('join', { name, config, shipType, x: spawnX, y: spawnY }));
     } else {
-        socket.emit('join', { name, config, shipType });
+        socket.emit('join', { name, config, shipType, x: spawnX, y: spawnY });
     }
 }
 
@@ -509,6 +625,36 @@ canvas.addEventListener('contextmenu', e  => e.preventDefault());
 document.addEventListener('keydown',   e  => { if (e.code === 'Space') { e.preventDefault(); boostActive = true; } });
 document.addEventListener('keyup',     e  => { if (e.code === 'Space') boostActive = false; });
 window.addEventListener('blur',        () => { boostActive = false; });
+
+// ── TOUCH (mobile) ────────────────────────────────────────────
+canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    _touchId    = touch.identifier;
+    mouse.x     = touch.clientX;
+    mouse.y     = touch.clientY;
+    boostActive = true;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const touch of e.changedTouches) {
+        if (touch.identifier === _touchId) {
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+        }
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    for (const touch of e.changedTouches) {
+        if (touch.identifier === _touchId) {
+            _touchId    = null;
+            boostActive = false;
+        }
+    }
+}, { passive: false });
 
 // ── MENU BACKGROUND ANIMATION ────────────────────────────────
 const _menuShips = [

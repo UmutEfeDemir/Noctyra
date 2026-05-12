@@ -35,9 +35,13 @@ function tickAchievements(stats) {
         if (ok) {
             _unlocked.add(def.id);
             _queue.push(def);
-            // Persist to DB (player is a global from game.js)
-            if (typeof dbSaveAchievement === 'function' && typeof player !== 'undefined' && player?.name) {
-                dbSaveAchievement(player.name, def.id);
+            // Persist via server endpoint (avoids client-side DB credentials)
+            if (typeof player !== 'undefined' && player?.name) {
+                fetch('/api/achievement', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: player.name, achId: def.id }),
+                }).catch(() => {});
             }
         }
     }
