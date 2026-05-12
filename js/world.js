@@ -7,15 +7,15 @@ function generateWorld() {
     coins     = [];
     particles = [];
 
-    // Islands — kept well away from player spawn
+    // Islands — seeded so all clients in same room see identical layout
     for (let i = 0; i < 14; i++) {
         let x, y, tries = 0;
         do {
-            x = rnd(200, WORLD_W - 200);
-            y = rnd(200, WORLD_H - 200);
+            x = sRnd(200, WORLD_W - 200);
+            y = sRnd(200, WORLD_H - 200);
             tries++;
         } while (dist(x, y, PLAYER_SPAWN_X, PLAYER_SPAWN_Y) < SAFE_RADIUS && tries < 30);
-        islands.push(new Island(x, y, rnd(28, 95)));
+        islands.push(new Island(x, y, sRnd(28, 95)));
     }
 
     for (let i = 0; i < COIN_TARGET;  i++) spawnCoin();

@@ -699,6 +699,37 @@ class Island {
     }
 }
 
+// ── REMOTE PLAYER ────────────────────────────────────────────
+// Extends Ship so all draw methods (_drawGemi, _drawSandal, etc.)
+// are properly inherited as instance methods via super().
+class RemotePlayer extends Ship {
+    constructor(id, name, config, shipType) {
+        const ci = Math.floor(Math.random() * SHIP_COLORS.length);
+        super(
+            PLAYER_SPAWN_X, PLAYER_SPAWN_Y,
+            false,
+            ci,
+            name,
+            (config && config.hull) ? config : null,
+            shipType || 'gemi'
+        );
+        this.id = id;
+    }
+
+    applyState({ x, y, angle, size, score, maxLen, boosting }) {
+        this.trail.push(this.x, this.y, maxLen || this.maxLen);
+        this.x        = x;
+        this.y        = y;
+        this.angle    = angle    ?? this.angle;
+        this.size     = size     ?? this.size;
+        this.score    = score    ?? this.score;
+        this.maxLen   = maxLen   ?? this.maxLen;
+        this.boosting = boosting ?? false;
+    }
+
+    update() {} // position is driven by network, not local physics
+}
+
 // ── PARTICLE ─────────────────────────────────────────────────
 class Particle {
     constructor(x, y, vx, vy, r, g, b, life, size) {

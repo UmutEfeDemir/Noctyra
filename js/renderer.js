@@ -105,12 +105,12 @@ function drawMinimap() {
         mmCtx.fillRect(co.x*sx - 1, co.y*sy - 1, 2, 2);
     }
 
-    // AI ships
-    for (const ai of ais) {
-        if (!ai.alive) continue;
-        mmCtx.fillStyle = ai.c.accent;
+    // Remote players
+    for (const rp of remotePlayers.values()) {
+        if (!rp.alive) continue;
+        mmCtx.fillStyle = rp.c.accent;
         mmCtx.beginPath();
-        mmCtx.arc(ai.x*sx, ai.y*sy, 3, 0, Math.PI*2);
+        mmCtx.arc(rp.x*sx, rp.y*sy, 3, 0, Math.PI*2);
         mmCtx.fill();
     }
 

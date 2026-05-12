@@ -17,6 +17,7 @@
     <div id="scoreDisplay">0 Altın</div>
     <div id="nameDisplay"></div>
     <div id="highScoreHUD"></div>
+    <div id="roomInfo" style="font-size:12px;color:rgba(100,200,255,0.7);margin-top:4px;letter-spacing:1px;"></div>
 </div>
 
 <!-- Combo display -->
@@ -38,10 +39,6 @@
 
 <canvas id="minimap" width="160" height="160"></canvas>
 
-<div id="leaderboard">
-    <h3 data-i18n="lbTitle">Korsan Sıralaması</h3>
-    <div id="lbContent"></div>
-</div>
 
 <div id="killMsg"></div>
 
@@ -116,8 +113,10 @@
     </div>
 </div>
 
-<!-- DB module loads async; exposes dbSaveScore / dbSaveAchievement / dbGetLeaderboard as globals -->
-<script type="module" src="js/db.js"></script>
+<!-- Socket.io client -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<!-- DB: direct fetch to Neon HTTP API — no npm package needed -->
+<script src="js/db.js"></script>
 
 <!-- Script loading order: i18n → constants → audio → achievements → entities → world → renderer → customizer → game -->
 <script src="js/i18n.js"></script>

@@ -12,17 +12,6 @@ body { background: #040a14; overflow: hidden; cursor: default; }
 #scoreDisplay { font-size: 26px; font-weight: bold; letter-spacing: 2px; }
 #nameDisplay  { font-size: 15px; color: #aaa; margin-top: 3px; }
 
-#livesDisplay { display: flex; gap: 5px; margin-top: 6px; }
-.heart {
-    font-size: 20px; line-height: 1;
-    color: rgba(100,30,30,0.40);
-    transition: color 0.25s, filter 0.25s;
-    filter: none;
-}
-.heart.active {
-    color: #E05050;
-    filter: drop-shadow(0 0 6px rgba(220,60,60,0.80));
-}
 
 #highScoreHUD {
     font-size: 12px; color: rgba(160,185,230,0.55);
@@ -83,19 +72,6 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     background: rgba(0,20,40,0.85);
 }
 
-/* ── Leaderboard ────────────────────────────────────────────── */
-#leaderboard {
-    position: fixed; top: 20px; right: 20px;
-    background: rgba(0,0,0,0.75); border: 2px solid #8B6914; border-radius: 8px;
-    padding: 10px 15px; color: #FFD700; font-family: Georgia, serif;
-    min-width: 190px; pointer-events: none;
-}
-#leaderboard h3 {
-    text-align: center; border-bottom: 1px solid #8B6914;
-    padding-bottom: 5px; margin-bottom: 8px; font-size: 14px;
-}
-.lb-entry { font-size: 13px; padding: 2px 0; display: flex; justify-content: space-between; gap: 10px; }
-.lb-player { color: #00FF88; font-weight: bold; }
 
 /* ── Kill message ───────────────────────────────────────────── */
 #killMsg {
@@ -360,33 +336,6 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     flex-shrink: 0;
 }
 
-/* ── Global leaderboard on death screen ─────────────────────── */
-.global-lb {
-    margin-top: 22px;
-    width: 280px;
-    font-family: Georgia, serif;
-}
-.glb-title {
-    text-align: center;
-    font-size: 11px;
-    letter-spacing: 3px;
-    color: rgba(160,185,230,0.55);
-    text-transform: uppercase;
-    margin-bottom: 8px;
-    border-bottom: 1px solid rgba(100,130,200,0.18);
-    padding-bottom: 6px;
-}
-.glb-entry {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13px;
-    color: rgba(160,185,230,0.75);
-    padding: 3px 0;
-}
-.glb-entry.glb-me {
-    color: #00FF88;
-    font-weight: bold;
-}
 
 /* ═══════════════════════════════════════════════════════════════
    SHIP CUSTOMIZER PANEL
