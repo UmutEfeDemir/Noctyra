@@ -113,3 +113,23 @@ function spawnSteam(ship) {
         18 + Math.random()*15, 2
     ));
 }
+
+// Foam/wake bubble spawned at ship's trail head — tiny white-blue drops
+function spawnWakeDrop(ship) {
+    if (particles.length > 380) return;
+    const ba  = ship.angle + Math.PI;
+    const s   = ship.size;
+    // Slightly off-center perpendicular spread so bubbles don't all stack
+    const perp = ship.angle + Math.PI / 2;
+    const spread = (Math.random() - 0.5) * s * 0.7;
+    const sp  = rnd(0.2, 0.9);
+    particles.push(new Particle(
+        ship.x + Math.cos(ba) * s * 0.6 + Math.cos(perp) * spread,
+        ship.y + Math.sin(ba) * s * 0.6 + Math.sin(perp) * spread,
+        Math.cos(ba) * sp + rnd(-0.25, 0.25),
+        Math.sin(ba) * sp + rnd(-0.25, 0.25),
+        210, 240, 255,
+        8 + Math.random() * 10,
+        1 + Math.random() * 1.2
+    ));
+}

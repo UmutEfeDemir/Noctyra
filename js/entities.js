@@ -99,18 +99,19 @@ class Ship {
         this.trail.seed(x, y, this.angle, TRAIL_INIT_LEN);
 
         // AI state
-        this.aiTick          = 0;
-        this.aiWander        = Math.random() * Math.PI * 2;
-        this.aiCoinTarget    = null;
+        this.aiTick           = 0;
+        this.aiWander         = Math.random() * Math.PI * 2;
+        this.aiCoinTarget     = null;
         this._wasBoostingLast = false;
+        this._wakeAcc         = 0;
     }
 
     eat(v) {
-        const trailGrow = v > 1 ? 25 : 5;
-        const scoreGain = v > 1 ? 5  : 2;
+        const trailGrow = v > 1 ? 8 : 2;   // slowed: was 25/5
+        const scoreGain = v > 1 ? 5 : 2;
         this.maxLen = Math.min(this.maxLen + trailGrow, MAX_TRAIL_LEN);
         this.score += scoreGain;
-        // size is recalculated every frame in update() — no need to set it here
+        // size is recalculated every frame in update()
     }
 
     // ── update ──────────────────────────────────────────────
@@ -128,7 +129,7 @@ class Ship {
             this.angle = lerpAngle(this.angle, Math.atan2(wy - this.y, wx - this.x), tr);
 
             // Sync ship size to current score every frame (catches all score sources: coins, kills, boost)
-            this.size = Math.max(13, 13 + Math.min(this.score, 500) * 0.03);
+            this.size = Math.max(13, 13 + Math.min(this.score, 500) * 0.02);
 
             // Boost
             this.boosting = boostActive && boostEnergy > 5 && this.maxLen > MIN_BOOST_LEN;
@@ -171,6 +172,13 @@ class Ship {
         this.y = clamp(this.y, 20, WORLD_H - 20);
 
         this.trail.push(this.x, this.y, this.maxLen);
+
+        // Wake foam bubbles — spawn every ~7 frames behind the ship
+        this._wakeAcc += dt;
+        if (this._wakeAcc >= 7) {
+            this._wakeAcc -= 7;
+            if (typeof spawnWakeDrop === 'function') spawnWakeDrop(this);
+        }
     }
 
     _aiUpdate(dt = 1) {

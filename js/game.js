@@ -211,7 +211,7 @@ function initSocket() {
         const finalBonus = Math.round(bonus * mult);
 
         player.score  += finalBonus;
-        player.maxLen  = Math.min(player.maxLen + 25, MAX_TRAIL_LEN);
+        player.maxLen  = Math.min(player.maxLen + 10, MAX_TRAIL_LEN);
         gameStats.kills++;
         gameStats.score = player.score;
         elScore.textContent = tf('score', { n: player.score });
