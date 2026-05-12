@@ -110,9 +110,7 @@ class Ship {
         const scoreGain = v > 1 ? 5  : 2;
         this.maxLen = Math.min(this.maxLen + trailGrow, MAX_TRAIL_LEN);
         this.score += scoreGain;
-        // Ship grows with score — size only ever increases, caps at 500 score
-        const targetSize = 13 + Math.min(this.score, 500) * 0.03;
-        if (targetSize > this.size) this.size = targetSize;
+        this.size = Math.max(13, 13 + Math.min(this.score, 500) * 0.03);
     }
 
     // ── update ──────────────────────────────────────────────
@@ -133,7 +131,10 @@ class Ship {
             this.boosting = boostActive && boostEnergy > 5 && this.maxLen > MIN_BOOST_LEN;
             if (this.boosting) {
                 // Deduct 5 gold the moment boost activates (once per press, not per frame)
-                if (!this._wasBoostingLast) this.score = Math.max(0, this.score - 5);
+                if (!this._wasBoostingLast) {
+                    this.score = Math.max(0, this.score - 5);
+                    this.size  = Math.max(13, 13 + Math.min(this.score, 500) * 0.03);
+                }
 
                 boostEnergy = Math.max(0, boostEnergy - BOOST_DRAIN * dt);
                 if (boostEnergy === 0) this.boosting = false;

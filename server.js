@@ -17,10 +17,8 @@ const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
     cors:         { origin: '*' },
-    allowEIO3:    true,
     pingTimeout:  20000,
     pingInterval: 10000,
-    // Try WebSocket first (lower latency); fall back to polling if proxy blocks it
     transports:   ['websocket', 'polling'],
 });
 
@@ -76,6 +74,10 @@ app.post('/api/achievement', async (req, res) => {
     res.json({ ok: true });
 });
 
+app.get('/health', (_req, res) => {
+    res.json({ ok: true, rooms: rooms.size, players: [...rooms.values()].reduce((s, r) => s + r.players.size, 0) });
+});
+
 // ── Rooms ─────────────────────────────────────────────────────
 // rooms: Map<roomId, { players: Map<socketId, data>, seed: number, _tick: Timeout|null }>
 const rooms = new Map();
@@ -125,18 +127,28 @@ function _deleteRoom(roomId) {
 }
 
 function findRoom() {
+    // Prefer the most-populated room that still has space (fills existing rooms before opening new ones)
+    let bestId = null, bestCount = 0;
     for (const [id, room] of rooms) {
-        if (room.players.size < MAX_ROOM_SIZE) {
-            _startTick(id);   // ensure tick is running (idempotent)
-            return id;
+        if (room.players.size < MAX_ROOM_SIZE && room.players.size > bestCount) {
+            bestId = id;
+            bestCount = room.players.size;
         }
     }
+    if (bestId) { _startTick(bestId); return bestId; }
     let code;
     do { code = _genCode(); } while (rooms.has(code));
     rooms.set(code, _makeRoom());
     _startTick(code);
     return code;
 }
+
+// Sweep zombie rooms (0 players) every 5 minutes
+setInterval(() => {
+    for (const [id, room] of rooms) {
+        if (room.players.size === 0) _deleteRoom(id);
+    }
+}, 5 * 60 * 1000);
 
 // ── Rate limiter ──────────────────────────────────────────────
 function _makeLimiter(maxPerSec) {
