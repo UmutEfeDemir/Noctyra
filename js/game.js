@@ -168,33 +168,9 @@ function checkCollisions() {
     if (!player || !player.alive) return;
     if (gracePeriod > 0) { gracePeriod--; return; }
 
-    const threshSq = (player.size + 4) * (player.size + 4);
-
-    // Player head vs remote player trails
-    for (const rp of remotePlayers.values()) {
-        if (!rp.alive) continue;
-        const checkN = Math.min(rp.trail.len, 120);
-        for (let i = 3; i < checkN; i++) {
-            const p  = rp.trail.get(i);
-            const dx = player.x - p.x, dy = player.y - p.y;
-            if (dx * dx + dy * dy < threshSq) {
-                if (socket) socket.emit('die', { killedBy: rp.name });
-                playerDie(rp.name);
-                return;
-            }
-        }
-    }
-
-    // Island collision
-    for (const isl of islands) {
-        if (isl.hits(player)) {
-            if (socket) socket.emit('die', { killedBy: null });
-            playerDie(null);
-            return;
-        }
-    }
-
-    // Remote heads vs local player trail → we report the kill
+    // ── KILL CHECK runs first ────────────────────────────────────
+    // If B's head enters A's trail AND A's head happens to be near B's trail,
+    // running kills first ensures A wins — B is marked dead, skipped in death check.
     const ptrl = player.trail;
     for (const [id, rp] of remotePlayers) {
         if (!rp.alive) continue;
@@ -208,6 +184,30 @@ function checkCollisions() {
                 if (socket) socket.emit('kill', { victimId: id });
                 break;
             }
+        }
+    }
+
+    // ── DEATH CHECK: player head vs remote trails ────────────────
+    // Skip remotes that were just killed above — their trail is no longer lethal.
+    const threshSq = (player.size + 4) * (player.size + 4);
+    for (const rp of remotePlayers.values()) {
+        if (!rp.alive) continue;
+        const checkN = Math.min(rp.trail.len, 120);
+        for (let i = 3; i < checkN; i++) {
+            const p  = rp.trail.get(i);
+            const dx = player.x - p.x, dy = player.y - p.y;
+            if (dx * dx + dy * dy < threshSq) {
+                playerDie(rp.name);   // playerDie() handles socket.emit('die')
+                return;
+            }
+        }
+    }
+
+    // ── ISLAND collision ─────────────────────────────────────────
+    for (const isl of islands) {
+        if (isl.hits(player)) {
+            playerDie(null);          // playerDie() handles socket.emit('die')
+            return;
         }
     }
 }
