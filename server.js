@@ -81,7 +81,11 @@ io.on('connection', socket => {
     // Player self-reports death (hit island or another player's trail)
     socket.on('die', ({ killedBy }) => {
         if (!roomId) return;
+        const room = rooms.get(roomId);
+        if (!room) return;
+        room.players.delete(socket.id);   // free the room slot immediately
         socket.to(roomId).emit('player_die', { id: socket.id, killedBy });
+        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
         console.log(`[DIE] ${socket.id} killed by ${killedBy}`);
     });
 
@@ -96,6 +100,8 @@ io.on('connection', socket => {
 
         const bonus = Math.round((victim.score || 0) + 12);
 
+        room.players.delete(victimId);    // free the victim's room slot immediately
+
         // Reward killer
         socket.emit('kill_confirmed', {
             victimName:   victim.name,
@@ -105,6 +111,7 @@ io.on('connection', socket => {
 
         // Tell everyone victim died
         io.to(roomId).emit('player_die', { id: victimId, killedBy: me?.name || '?' });
+        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
         console.log(`[KILL] ${me?.name} killed ${victim.name}`);
     });
 

@@ -33,32 +33,6 @@ function spawnChest() {
     coins.push(new Coin(rnd(100, WORLD_W-100), rnd(100, WORLD_H-100), 5));
 }
 
-// ── AI spawning ──────────────────────────────────────────────
-function safeAISpawn(minDist) {
-    let x, y, tries = 0;
-    do {
-        x = rnd(250, WORLD_W-250);
-        y = rnd(250, WORLD_H-250);
-        tries++;
-    } while (dist(x, y, PLAYER_SPAWN_X, PLAYER_SPAWN_Y) < minDist && tries < 40);
-    return { x, y };
-}
-
-function respawnAI(idx) {
-    setTimeout(() => {
-        if (!ais[idx]) return;
-        const px = player ? player.x : PLAYER_SPAWN_X;
-        const py = player ? player.y : PLAYER_SPAWN_Y;
-        let x, y, tries = 0;
-        do {
-            x = rnd(250, WORLD_W-250);
-            y = rnd(250, WORLD_H-250);
-            tries++;
-        } while (dist(x, y, px, py) < 600 && tries < 40);
-        const types = ['sandal','gemi','gemi','savas'];
-        ais[idx] = new Ship(x, y, false, (idx+2) % SHIP_COLORS.length, rndName(), null, types[Math.floor(Math.random()*types.length)]);
-    }, 3500);
-}
 
 // ── Particle effects ─────────────────────────────────────────
 // Particle stores r,g,b as numbers — no string building per particle per frame.

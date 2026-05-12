@@ -49,6 +49,13 @@ let _deathScore  = 0;
 let _isNewRecord = false;
 
 // ── SOCKET SETUP ──────────────────────────────────────────────
+const _leaveTimers = new Map(); // socketId → timeout handle
+
+function _cancelLeaveTimer(id) {
+    const t = _leaveTimers.get(id);
+    if (t !== undefined) { clearTimeout(t); _leaveTimers.delete(id); }
+}
+
 function initSocket() {
     socket = io(SERVER_URL);
 
@@ -56,7 +63,11 @@ function initSocket() {
         resetWorldSeed(seed);
         generateWorld();
 
+        // Cancel any pending removal timers and clear old remote players
+        _leaveTimers.forEach(t => clearTimeout(t));
+        _leaveTimers.clear();
         remotePlayers.clear();
+
         for (const p of players) {
             remotePlayers.set(p.id, new RemotePlayer(p.id, p.name, p.config, p.shipType));
         }
@@ -67,6 +78,8 @@ function initSocket() {
     });
 
     socket.on('player_join', p => {
+        // Cancel any death-removal timer for this id (player restarted quickly)
+        _cancelLeaveTimer(p.id);
         remotePlayers.set(p.id, new RemotePlayer(p.id, p.name, p.config, p.shipType));
         _updateRoomHUD();
     });
@@ -88,12 +101,15 @@ function initSocket() {
             spawnExplosion(rp.x, rp.y);
             const drops = Math.floor(rp.maxLen / 9);
             for (let i = 0; i < drops; i++) spawnCoin(rp);
-            setTimeout(() => remotePlayers.delete(id), 4000);
+            // Schedule removal — cancelled if player re-joins before timeout
+            const t = setTimeout(() => { remotePlayers.delete(id); _leaveTimers.delete(id); }, 4000);
+            _leaveTimers.set(id, t);
         }
         _updateRoomHUD();
     });
 
     socket.on('player_leave', ({ id }) => {
+        _cancelLeaveTimer(id);
         remotePlayers.delete(id);
         _updateRoomHUD();
     });
