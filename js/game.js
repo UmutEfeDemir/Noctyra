@@ -620,15 +620,15 @@ function loop(ts) {
             if (!boostActive &&  _prevBoosting) stopBoostSound();
             _prevBoosting = boostActive;
 
-            // Send state ~30 times/sec regardless of frame rate
+            // Send state ~50 times/sec regardless of frame rate (matches server 50 Hz tick)
             _stateEmitAcc += _dt;
-            if (_stateEmitAcc >= 2 && socket) {
-                _stateEmitAcc -= 2;
+            if (_stateEmitAcc >= 1.2 && socket) {
+                _stateEmitAcc -= 1.2;
                 socket.emit('state', {
-                    x:        player.x,
-                    y:        player.y,
-                    angle:    player.angle,
-                    size:     player.size,
+                    x:        Math.round(player.x * 10) / 10,
+                    y:        Math.round(player.y * 10) / 10,
+                    angle:    Math.round(player.angle * 1000) / 1000,
+                    size:     Math.round(player.size * 10) / 10,
                     score:    player.score,
                     maxLen:   player.maxLen,
                     boosting: player.boosting,

@@ -110,7 +110,7 @@ class Ship {
         const scoreGain = v > 1 ? 5  : 2;
         this.maxLen = Math.min(this.maxLen + trailGrow, MAX_TRAIL_LEN);
         this.score += scoreGain;
-        this.size = Math.max(13, 13 + Math.min(this.score, 500) * 0.03);
+        // size is recalculated every frame in update() — no need to set it here
     }
 
     // ── update ──────────────────────────────────────────────
@@ -127,13 +127,15 @@ class Ship {
             const wy = mouse.y + camera.y;
             this.angle = lerpAngle(this.angle, Math.atan2(wy - this.y, wx - this.x), tr);
 
+            // Sync ship size to current score every frame (catches all score sources: coins, kills, boost)
+            this.size = Math.max(13, 13 + Math.min(this.score, 500) * 0.03);
+
             // Boost
             this.boosting = boostActive && boostEnergy > 5 && this.maxLen > MIN_BOOST_LEN;
             if (this.boosting) {
                 // Deduct 5 gold the moment boost activates (once per press, not per frame)
                 if (!this._wasBoostingLast) {
                     this.score = Math.max(0, this.score - 5);
-                    this.size  = Math.max(13, 13 + Math.min(this.score, 500) * 0.03);
                 }
 
                 boostEnergy = Math.max(0, boostEnergy - BOOST_DRAIN * dt);
@@ -728,52 +730,90 @@ class RemotePlayer extends Ship {
         const sx = initX ?? PLAYER_SPAWN_X;
         const sy = initY ?? PLAYER_SPAWN_Y;
         super(sx, sy, false, ci, name, (config && config.hull) ? config : null, shipType || 'gemi');
-        this.id        = id;
-        this._anchorX  = sx;
-        this._anchorY  = sy;
-        this._anchorMs = performance.now();
+        this.id   = id;
+        this._buf = [];   // [{ms, x, y, angle, size, score, maxLen, boosting}]
         this.trail.trimToNewest(0);
     }
 
-    applyState({ x, y, angle, size, score, maxLen, boosting }) {
-        // Snap visual position on big teleports (spawn / lag spike), otherwise keep current
-        const dx = x - this.x, dy = y - this.y;
-        if (dx * dx + dy * dy > 200 * 200) { this.x = x; this.y = y; }
+    applyState(data) {
+        const now = performance.now();
+        const { x, y, angle, size, score, maxLen, boosting } = data;
 
-        // Store server snapshot as dead-reckoning anchor
-        this._anchorX  = x;
-        this._anchorY  = y;
-        this._anchorMs = performance.now();
+        // Large teleport — flush buffer and snap visual position
+        if (this._buf.length > 0) {
+            const last = this._buf[this._buf.length - 1];
+            const dx = x - last.x, dy = y - last.y;
+            if (dx * dx + dy * dy > 250 * 250) {
+                this._buf = [];
+                this.x = x;
+                this.y = y;
+            }
+        }
 
-        this.angle    = angle    ?? this.angle;
-        this.size     = size     ?? this.size;
-        this.score    = score    ?? this.score;
-        this.maxLen   = maxLen   ?? this.maxLen;
-        this.boosting = boosting ?? false;
+        this._buf.push({
+            ms: now, x, y,
+            angle:    angle    ?? this.angle,
+            size:     size     ?? this.size,
+            score:    score    ?? this.score,
+            maxLen:   maxLen   ?? this.maxLen,
+            boosting: boosting ?? false,
+        });
+        // Keep at most ~1.5 s of history (75 states at 50 Hz)
+        if (this._buf.length > 75) this._buf.shift();
     }
 
     update() {
         if (!this.alive) return;
-        const dt = typeof _dt !== 'undefined' ? _dt : 1;
+        const dt       = typeof _dt !== 'undefined' ? _dt : 1;
+        const renderMs = performance.now() - 100;   // render 100 ms behind real-time
+        const buf      = this._buf;
 
-        // Dead reckoning: project the anchor forward by how long ago we got it.
-        // This makes remote ships appear to move at their real speed instead of
-        // creeping toward a stale snapshot.
-        const ageMs  = performance.now() - this._anchorMs;
-        const ageDt  = Math.min(ageMs * 60 / 1000, 4);   // cap at 4 frames (~67ms) to limit prediction error
-        const spd    = this.boosting ? BOOST_SPEED : BASE_SPEED;
-        const predX  = this._anchorX + Math.cos(this.angle) * spd * ageDt;
-        const predY  = this._anchorY + Math.sin(this.angle) * spd * ageDt;
+        if (buf.length === 0) return;
 
-        // Fast lerp toward prediction — corrects for turn-prediction error
-        const ex = predX - this.x, ey = predY - this.y;
-        if (ex * ex + ey * ey > 200 * 200) {
-            this.x = predX; this.y = predY;
-        } else {
-            const f = 1 - Math.pow(0.18, dt);   // ~82% per frame → very responsive
-            this.x += ex * f;
-            this.y += ey * f;
+        // Find the two states that bracket renderMs
+        let prev = null, next = null;
+        for (let i = 0; i < buf.length; i++) {
+            if (buf[i].ms <= renderMs) prev = buf[i];
+            else { next = buf[i]; break; }
         }
+
+        if (prev && next) {
+            // Smooth interpolation between two known positions — zero snapping
+            const span = next.ms - prev.ms;
+            const t    = span > 0 ? (renderMs - prev.ms) / span : 1;
+            this.x = prev.x + (next.x - prev.x) * t;
+            this.y = prev.y + (next.y - prev.y) * t;
+            let da = next.angle - prev.angle;
+            while (da >  Math.PI) da -= Math.PI * 2;
+            while (da < -Math.PI) da += Math.PI * 2;
+            this.angle    = prev.angle + da * t;
+            this.size     = prev.size  + (next.size - prev.size) * t;
+            this.boosting = prev.boosting;
+        } else if (prev) {
+            // Only past states — dead reckon forward from the newest one
+            const ageDt = Math.min((performance.now() - prev.ms) * 60 / 1000, 6);
+            const spd   = prev.boosting ? BOOST_SPEED : BASE_SPEED;
+            const tx    = prev.x + Math.cos(prev.angle) * spd * ageDt;
+            const ty    = prev.y + Math.sin(prev.angle) * spd * ageDt;
+            const f     = 1 - Math.pow(0.25, dt);
+            this.x     += (tx - this.x) * f;
+            this.y     += (ty - this.y) * f;
+            this.angle  = prev.angle;
+            this.size   = prev.size;
+            this.boosting = prev.boosting;
+        } else {
+            // All states are in the future (first 100 ms after join) — snap to oldest
+            this.x     = buf[0].x;
+            this.y     = buf[0].y;
+            this.angle = buf[0].angle;
+            this.size  = buf[0].size;
+            this.boosting = buf[0].boosting;
+        }
+
+        // Score/maxLen don't need smooth interpolation — use latest received value
+        const latest    = buf[buf.length - 1];
+        this.score  = latest.score;
+        this.maxLen = latest.maxLen;
 
         this.trail.push(this.x, this.y, this.maxLen);
     }

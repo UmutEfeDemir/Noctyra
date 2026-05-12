@@ -23,23 +23,30 @@ function _dayColor() {
     return '#004E6A';
 }
 
+// Depth gradient is static — recreate only on canvas resize
+let _depthGrad = null, _depthGradW = 0, _depthGradH = 0;
+
 function drawOcean() {
     ctx.fillStyle = _dayColor();
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Depth gradient — darker center, lighter edges
-    const dg = ctx.createRadialGradient(
-        canvas.width/2, canvas.height/2, 0,
-        canvas.width/2, canvas.height/2, Math.max(canvas.width, canvas.height) * 0.7
-    );
-    dg.addColorStop(0,   'rgba(0,20,40,0.28)');
-    dg.addColorStop(0.6, 'rgba(0,20,40,0.08)');
-    dg.addColorStop(1,   'rgba(0,20,40,0)');
-    ctx.fillStyle = dg;
+    // Cache the radial gradient — createRadialGradient every frame is expensive
+    if (!_depthGrad || canvas.width !== _depthGradW || canvas.height !== _depthGradH) {
+        _depthGradW = canvas.width;
+        _depthGradH = canvas.height;
+        _depthGrad  = ctx.createRadialGradient(
+            canvas.width/2, canvas.height/2, 0,
+            canvas.width/2, canvas.height/2, Math.max(canvas.width, canvas.height) * 0.7
+        );
+        _depthGrad.addColorStop(0,   'rgba(0,20,40,0.28)');
+        _depthGrad.addColorStop(0.6, 'rgba(0,20,40,0.08)');
+        _depthGrad.addColorStop(1,   'rgba(0,20,40,0)');
+    }
+    ctx.fillStyle = _depthGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Far wave layer (subtle, small)
-    const gs = 70;
+    // Far wave layer — grid 100px (was 70) cuts bezier count ~50%
+    const gs = 100;
     const ox = camera.x % gs;
     const oy = camera.y % gs;
     ctx.strokeStyle = 'rgba(0,110,170,0.18)';
@@ -54,8 +61,8 @@ function drawOcean() {
     }
     ctx.stroke();
 
-    // Near wave layer (slightly more visible, offset grid)
-    const gs2 = 48;
+    // Near wave layer — grid 80px (was 48)
+    const gs2 = 80;
     const ox2 = (camera.x * 1.15) % gs2;
     const oy2 = (camera.y * 1.15) % gs2;
     ctx.strokeStyle = 'rgba(30,140,200,0.14)';

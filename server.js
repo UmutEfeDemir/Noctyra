@@ -11,7 +11,7 @@ const path       = require('path');
 
 const PORT          = process.env.PORT || 3000;
 const MAX_ROOM_SIZE = 10;
-const TICK_MS       = 33;   // server broadcasts batched states at ~30 Hz
+const TICK_MS       = 20;   // server broadcasts batched states at 50 Hz
 
 const app    = express();
 const server = http.createServer(app);
@@ -164,7 +164,7 @@ function _makeLimiter(maxPerSec) {
 io.on('connection', socket => {
     let roomId = null;
     const rl = {
-        state: _makeLimiter(30),
+        state: _makeLimiter(60),
         kill:  _makeLimiter(5),
         coin:  _makeLimiter(15),
         join:  _makeLimiter(2),
