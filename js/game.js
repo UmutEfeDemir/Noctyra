@@ -86,7 +86,7 @@ function _cancelLeaveTimer(id) {
 
 function initSocket() {
     socket = io(SERVER_URL, {
-        transports:           ['polling', 'websocket'],
+        transports:           ['websocket', 'polling'],   // WS first = lower latency
         reconnectionDelay:    1500,
         reconnectionAttempts: 15,
     });
@@ -144,9 +144,13 @@ function initSocket() {
         updateRoomLB();
     });
 
-    socket.on('player_state', ({ id, ...data }) => {
-        const rp = remotePlayers.get(id);
-        if (rp && rp.alive) rp.applyState(data);
+    // Batched state update — server sends all dirty players at once every 50 ms
+    socket.on('states_batch', batch => {
+        for (const data of batch) {
+            if (data.id === socket.id) continue;
+            const rp = remotePlayers.get(data.id);
+            if (rp && rp.alive) rp.applyState(data);
+        }
     });
 
     socket.on('player_die', ({ id, killedBy, droppedCoins }) => {
@@ -278,9 +282,13 @@ function checkCollisions() {
     // If B's head enters A's trail AND A's head happens to be near B's trail,
     // running kills first ensures A wins — B is marked dead, skipped in death check.
     const ptrl = player.trail;
+    const _killThresh = 700 * 700;
     for (const [id, rp] of remotePlayers) {
         if (!rp.alive) continue;
-        const checkN = Math.min(ptrl.len, 120);
+        // Spatial cull: skip players whose center is too far to possibly hit our trail
+        const _sdx = rp.x - player.x, _sdy = rp.y - player.y;
+        if (_sdx * _sdx + _sdy * _sdy > _killThresh) continue;
+        const checkN = Math.min(ptrl.len, 60);
         for (let i = 2; i < checkN; i++) {
             const p  = ptrl.get(i);
             const dx = rp.x - p.x, dy = rp.y - p.y;
@@ -298,8 +306,11 @@ function checkCollisions() {
     const threshSq = (player.size + 4) * (player.size + 4);
     for (const rp of remotePlayers.values()) {
         if (!rp.alive) continue;
-        const checkN = Math.min(rp.trail.len, 120);
-        for (let i = 3; i < checkN; i++) {
+        // Spatial cull
+        const _sdx = rp.x - player.x, _sdy = rp.y - player.y;
+        if (_sdx * _sdx + _sdy * _sdy > _killThresh) continue;
+        const checkN = Math.min(rp.trail.len, 60);
+        for (let i = 2; i < checkN; i++) {
             const p  = rp.trail.get(i);
             const dx = player.x - p.x, dy = player.y - p.y;
             if (dx * dx + dy * dy < threshSq) {
@@ -624,6 +635,9 @@ function loop(ts) {
         }
     }
 
+    // Interpolate remote player positions toward their latest received state
+    for (const rp of remotePlayers.values()) { if (rp.alive) rp.update(); }
+
     // Draw remote trails + ships
     for (const rp of remotePlayers.values()) { if (rp.alive) rp.drawTrail(); }
     if (player && player.alive) player.drawTrail();
@@ -704,7 +718,7 @@ function loop(ts) {
         ctx.fillStyle = '#FFD700';
         ctx.font      = 'bold 28px Georgia';
         ctx.textAlign = 'center';
-        ctx.fillText('🏆 ' + t('winner'), canvas.width / 2, canvas.height / 2 + 4);
+        ctx.fillText(t('winner'), canvas.width / 2, canvas.height / 2 + 4);
         ctx.textAlign = 'left';
         ctx.restore();
     }

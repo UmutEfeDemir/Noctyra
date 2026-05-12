@@ -716,25 +716,18 @@ class Island {
 class RemotePlayer extends Ship {
     constructor(id, name, config, shipType, initX, initY) {
         const ci = Math.floor(Math.random() * SHIP_COLORS.length);
-        super(
-            initX ?? PLAYER_SPAWN_X,
-            initY ?? PLAYER_SPAWN_Y,
-            false,
-            ci,
-            name,
-            (config && config.hull) ? config : null,
-            shipType || 'gemi'
-        );
-        this.id = id;
-        // Clear the seeded trail so existing players don't falsely detect a
-        // new player's trail at spawn — real trail is built from applyState calls.
+        const sx = initX ?? PLAYER_SPAWN_X;
+        const sy = initY ?? PLAYER_SPAWN_Y;
+        super(sx, sy, false, ci, name, (config && config.hull) ? config : null, shipType || 'gemi');
+        this.id       = id;
+        this._targetX = sx;
+        this._targetY = sy;
         this.trail.trimToNewest(0);
     }
 
     applyState({ x, y, angle, size, score, maxLen, boosting }) {
-        this.trail.push(this.x, this.y, maxLen || this.maxLen);
-        this.x        = x;
-        this.y        = y;
+        this._targetX = x;
+        this._targetY = y;
         this.angle    = angle    ?? this.angle;
         this.size     = size     ?? this.size;
         this.score    = score    ?? this.score;
@@ -742,7 +735,23 @@ class RemotePlayer extends Ship {
         this.boosting = boosting ?? false;
     }
 
-    update() {} // position is driven by network, not local physics
+    update() {
+        if (!this.alive) return;
+        const dt = typeof _dt !== 'undefined' ? _dt : 1;
+        const dx = this._targetX - this.x;
+        const dy = this._targetY - this.y;
+        // Snap if too far (first update after spawn / big gap) — otherwise lerp smoothly
+        if (dx * dx + dy * dy > 250 * 250) {
+            this.x = this._targetX;
+            this.y = this._targetY;
+        } else {
+            // Exponential lerp — frame-rate independent, ~87% covered in one 50ms server tick
+            const f = 1 - Math.pow(0.50, dt);
+            this.x += dx * f;
+            this.y += dy * f;
+        }
+        this.trail.push(this.x, this.y, this.maxLen);
+    }
 }
 
 // ── PARTICLE ─────────────────────────────────────────────────

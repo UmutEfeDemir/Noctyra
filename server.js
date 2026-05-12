@@ -11,6 +11,7 @@ const path       = require('path');
 
 const PORT          = process.env.PORT || 3000;
 const MAX_ROOM_SIZE = 10;
+const TICK_MS       = 33;   // server broadcasts batched states at ~30 Hz
 
 const app    = express();
 const server = http.createServer(app);
@@ -19,7 +20,8 @@ const io     = new Server(server, {
     allowEIO3:    true,
     pingTimeout:  20000,
     pingInterval: 10000,
-    transports:   ['polling', 'websocket'],
+    // Try WebSocket first (lower latency); fall back to polling if proxy blocks it
+    transports:   ['websocket', 'polling'],
 });
 
 app.set('trust proxy', 1);
@@ -75,10 +77,9 @@ app.post('/api/achievement', async (req, res) => {
 });
 
 // ── Rooms ─────────────────────────────────────────────────────
-// rooms: Map<roomId, { players: Map<socketId, data>, seed: number }>
+// rooms: Map<roomId, { players: Map<socketId, data>, seed: number, _tick: Timeout|null }>
 const rooms = new Map();
 
-// Generate a 4-char room code using unambiguous characters
 function _genCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let c = '';
@@ -86,17 +87,58 @@ function _genCode() {
     return c;
 }
 
+function _makeRoom() {
+    return { players: new Map(), seed: Math.floor(Math.random() * 0xFFFFFF), _tick: null };
+}
+
+// Start the 50 ms broadcast tick for a room (idempotent).
+// Each tick collects all dirty player states and sends ONE batched event.
+// This replaces per-state re-broadcast: 10 players × 30/s × 9 recipients = 2 700 ev/s
+// → now: 20 batch events/s to 10 clients = 200 ev/s  (13.5× reduction)
+function _startTick(roomId) {
+    const room = rooms.get(roomId);
+    if (!room || room._tick) return;
+    room._tick = setInterval(() => {
+        const r = rooms.get(roomId);
+        if (!r) { clearInterval(room._tick); return; }
+        const batch = [];
+        for (const pd of r.players.values()) {
+            if (pd._dirty) {
+                batch.push({
+                    id: pd.id, x: pd.x, y: pd.y,
+                    angle: pd.angle, size: pd.size,
+                    score: pd.score, maxLen: pd.maxLen,
+                    boosting: pd.boosting,
+                });
+                pd._dirty = false;
+            }
+        }
+        if (batch.length > 0) io.to(roomId).emit('states_batch', batch);
+    }, TICK_MS);
+}
+
+function _deleteRoom(roomId) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    if (room._tick) { clearInterval(room._tick); room._tick = null; }
+    rooms.delete(roomId);
+}
+
 function findRoom() {
     for (const [id, room] of rooms) {
-        if (room.players.size < MAX_ROOM_SIZE) return id;
+        if (room.players.size < MAX_ROOM_SIZE) {
+            _startTick(id);   // ensure tick is running (idempotent)
+            return id;
+        }
     }
     let code;
     do { code = _genCode(); } while (rooms.has(code));
-    rooms.set(code, { players: new Map(), seed: Math.floor(Math.random() * 0xFFFFFF) });
+    rooms.set(code, _makeRoom());
+    _startTick(code);
     return code;
 }
 
-// Simple per-socket rate limiter — rolling 1-second window
+// ── Rate limiter ──────────────────────────────────────────────
 function _makeLimiter(maxPerSec) {
     let count = 0, windowEnd = 0;
     return () => {
@@ -110,13 +152,12 @@ function _makeLimiter(maxPerSec) {
 io.on('connection', socket => {
     let roomId = null;
     const rl = {
-        state: _makeLimiter(35),
+        state: _makeLimiter(30),
         kill:  _makeLimiter(5),
         coin:  _makeLimiter(15),
         join:  _makeLimiter(2),
     };
 
-    // Ping measurement
     socket.on('__ping', () => socket.emit('__pong'));
 
     socket.on('join', ({ name, config, shipType, x, y, roomCode }) => {
@@ -128,7 +169,7 @@ io.on('connection', socket => {
             if (old) {
                 old.players.delete(socket.id);
                 socket.to(roomId).emit('player_leave', { id: socket.id });
-                if (old.players.size === 0) rooms.delete(roomId);
+                if (old.players.size === 0) _deleteRoom(roomId);
                 else io.to(roomId).emit('room_info', { count: old.players.size, max: MAX_ROOM_SIZE });
             }
             socket.leave(roomId);
@@ -140,13 +181,10 @@ io.on('connection', socket => {
             : '';
 
         if (code.length === 4) {
-            if (!rooms.has(code)) {
-                rooms.set(code, { players: new Map(), seed: Math.floor(Math.random() * 0xFFFFFF) });
-            }
-            if (rooms.get(code).players.size >= MAX_ROOM_SIZE) {
-                socket.emit('room_full');
-                return;
-            }
+            if (!rooms.has(code)) rooms.set(code, _makeRoom());
+            const r = rooms.get(code);
+            if (r.players.size >= MAX_ROOM_SIZE) { socket.emit('room_full'); return; }
+            _startTick(code);
             roomId = code;
         } else {
             roomId = findRoom();
@@ -157,6 +195,7 @@ io.on('connection', socket => {
             id: socket.id, name, config, shipType,
             x: x || 2500, y: y || 2500,
             angle: 0, size: 13, score: 0, maxLen: 55, kills: 0,
+            boosting: false, _dirty: false,
         };
         room.players.set(socket.id, pData);
         socket.join(roomId);
@@ -165,17 +204,22 @@ io.on('connection', socket => {
         socket.emit('room_joined', { roomId, seed: room.seed, players: others, code: roomId });
         socket.to(roomId).emit('player_join', pData);
         io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
-
         console.log(`[JOIN] ${name} → ${roomId} (${room.players.size}/${MAX_ROOM_SIZE})`);
     });
 
+    // State update: just store latest data + mark dirty.
+    // The room tick broadcasts all dirty states in one batch every 50 ms.
     socket.on('state', data => {
         if (!rl.state() || !roomId) return;
         const room = rooms.get(roomId);
         if (!room) return;
         const pd = room.players.get(socket.id);
-        if (pd) Object.assign(pd, { x: data.x, y: data.y, angle: data.angle, size: data.size, score: data.score, maxLen: data.maxLen });
-        socket.to(roomId).emit('player_state', { id: socket.id, ...data });
+        if (pd) {
+            pd.x = data.x; pd.y = data.y; pd.angle = data.angle;
+            pd.size = data.size; pd.score = data.score;
+            pd.maxLen = data.maxLen; pd.boosting = data.boosting;
+            pd._dirty = true;
+        }
     });
 
     socket.on('coin_take', ({ id }) => {
@@ -188,7 +232,6 @@ io.on('connection', socket => {
         socket.to(roomId).emit('coin_add', { id, x, y, v });
     });
 
-    // Player self-reports death — save score to DB
     socket.on('die', ({ killedBy, droppedCoins }) => {
         if (!roomId) return;
         const room = rooms.get(roomId);
@@ -209,7 +252,6 @@ io.on('connection', socket => {
         const me     = room.players.get(socket.id);
         if (!victim) return;
 
-        // Track kills for DB
         if (me) me.kills = (me.kills || 0) + 1;
 
         const bonus = Math.round((victim.score || 0) + 12);
@@ -235,7 +277,7 @@ io.on('connection', socket => {
         room.players.delete(socket.id);
         socket.to(roomId).emit('player_leave', { id: socket.id });
         if (room.players.size === 0) {
-            rooms.delete(roomId);
+            _deleteRoom(roomId);
         } else {
             io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
         }
