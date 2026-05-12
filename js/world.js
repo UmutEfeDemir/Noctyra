@@ -25,17 +25,24 @@ function generateWorld() {
 }
 
 // ── Coin / chest spawning ────────────────────────────────────
-// Seeded versions — used only during generateWorld() for consistent layout
+function _onIsland(x, y, pad) {
+    return islands.some(isl => dist(x, y, isl.x, isl.y) < isl.r + pad);
+}
+
+// Seeded versions — used only during generateWorld() for consistent layout.
+// Retry loop uses sRnd so all clients consume the same PRNG sequence.
 function _spawnCoinSeeded() {
-    const x = sRnd(80, WORLD_W - 80);
-    const y = sRnd(80, WORLD_H - 80);
+    let x, y, tries = 0;
+    do { x = sRnd(80, WORLD_W - 80); y = sRnd(80, WORLD_H - 80); }
+    while (++tries < 10 && _onIsland(x, y, 18));
     const c = new Coin(_coinId++, x, y, 1);
     coins.push(c);
     return c;
 }
 function _spawnChestSeeded() {
-    const x = sRnd(100, WORLD_W - 100);
-    const y = sRnd(100, WORLD_H - 100);
+    let x, y, tries = 0;
+    do { x = sRnd(100, WORLD_W - 100); y = sRnd(100, WORLD_H - 100); }
+    while (++tries < 10 && _onIsland(x, y, 24));
     const c = new Coin(_coinId++, x, y, 5);
     coins.push(c);
     return c;
@@ -43,15 +50,21 @@ function _spawnChestSeeded() {
 
 // Random versions — used for replacements/drops; return the coin for network broadcast
 function spawnCoin(near) {
-    const x = near ? clamp(near.x + rnd(-80,80), 80, WORLD_W-80) : rnd(80, WORLD_W-80);
-    const y = near ? clamp(near.y + rnd(-80,80), 80, WORLD_H-80) : rnd(80, WORLD_H-80);
+    let x, y, tries = 0;
+    do {
+        x = near ? clamp(near.x + rnd(-120, 120), 80, WORLD_W - 80) : rnd(80, WORLD_W - 80);
+        y = near ? clamp(near.y + rnd(-120, 120), 80, WORLD_H - 80) : rnd(80, WORLD_H - 80);
+    } while (++tries < 12 && _onIsland(x, y, 18));
     const c = new Coin(_coinId++, x, y, 1);
     coins.push(c);
     return c;
 }
 
 function spawnChest() {
-    const c = new Coin(_coinId++, rnd(100, WORLD_W-100), rnd(100, WORLD_H-100), 5);
+    let x, y, tries = 0;
+    do { x = rnd(100, WORLD_W - 100); y = rnd(100, WORLD_H - 100); }
+    while (++tries < 12 && _onIsland(x, y, 24));
+    const c = new Coin(_coinId++, x, y, 5);
     coins.push(c);
     return c;
 }

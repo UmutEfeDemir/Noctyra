@@ -58,6 +58,11 @@ let _connectTimeout   = null;
 let _ping             = 0;
 let _currentRoomCode  = '';
 
+// Delta time — set each frame so all modules can read it as a global
+let _dt           = 1;
+let _lastTs       = 0;
+let _stateEmitAcc = 0;   // accumulator for network state emit (~30/sec regardless of fps)
+
 // ── SYSTEMS ───────────────────────────────────────────────────
 let comboCount    = 0;
 let comboTimer    = 0;
@@ -256,8 +261,9 @@ function initSocket() {
                 name:     player.name,
                 config:   { ...playerShipConfig },
                 shipType: playerShipConfig.shipType,
-                x: player.x,
-                y: player.y,
+                x:        player.x,
+                y:        player.y,
+                roomCode: _currentRoomCode,   // rejoin same room after disconnect
             });
         }
     });
@@ -266,7 +272,7 @@ function initSocket() {
 // ── COLLISION ────────────────────────────────────────────────
 function checkCollisions() {
     if (!player || !player.alive) return;
-    if (gracePeriod > 0) { gracePeriod--; return; }
+    if (gracePeriod > 0) { gracePeriod = Math.max(0, gracePeriod - _dt); return; }
 
     // ── KILL CHECK runs first ────────────────────────────────────
     // If B's head enters A's trail AND A's head happens to be near B's trail,
@@ -415,16 +421,45 @@ function _updateRoomCodeHUD() {
     if (_currentRoomCode) {
         el.textContent = '🔗 ' + _currentRoomCode;
         el.style.display = 'block';
+        // Update browser URL bar so sharing the tab URL auto-joins the room
+        history.replaceState(null, '', '?room=' + _currentRoomCode);
     } else {
         el.style.display = 'none';
     }
 }
 
+// Copy the invite link (full URL with ?room=) to clipboard.
+// Falls back through: Web Share API → navigator.clipboard → execCommand
 function copyRoomCode() {
     if (!_currentRoomCode) return;
-    navigator.clipboard.writeText(_currentRoomCode).then(() => {
-        showKillMsg(t('roomCodeCopied'));
-    }).catch(() => {});
+    const url = location.origin + location.pathname + '?room=' + _currentRoomCode;
+
+    const execFallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); showKillMsg(t('roomCodeCopied')); } catch (_) {}
+        document.body.removeChild(ta);
+    };
+
+    const clipboardCopy = () => {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(url)
+                .then(() => showKillMsg(t('roomCodeCopied')))
+                .catch(execFallback);
+        } else {
+            execFallback();
+        }
+    };
+
+    if (navigator.share) {
+        navigator.share({ title: 'NOCTYRA — Oda ' + _currentRoomCode, url })
+            .catch(clipboardCopy);
+    } else {
+        clipboardCopy();
+    }
 }
 
 function updateRoomLB() {
@@ -513,7 +548,7 @@ function _showConnectError() {
 function drawKillFeed() {
     if (_killFeed.length === 0) return;
     for (let i = _killFeed.length - 1; i >= 0; i--) {
-        _killFeed[i].timer--;
+        _killFeed[i].timer -= _dt;
         if (_killFeed[i].timer <= 0) _killFeed.splice(i, 1);
     }
     if (_killFeed.length === 0) return;
@@ -536,10 +571,16 @@ function drawKillFeed() {
 }
 
 // ── MAIN LOOP ─────────────────────────────────────────────────
-function loop() {
+function loop(ts) {
+    // Delta time: how many 60fps-frames worth of time passed since last loop call.
+    // Clamped so a tab coming back from background doesn't cause a huge jump.
+    const raw = (_lastTs > 0 && ts > 0) ? (ts - _lastTs) / (1000 / 60) : 1;
+    _dt   = Math.min(Math.max(raw, 0.1), 3);
+    _lastTs = ts || 0;
+
     frame++;
-    waveT   += 0.005;
-    dayTime  = (dayTime + 1 / 10800) % 1;
+    waveT   += 0.005 * _dt;
+    dayTime  = (dayTime + _dt / 10800) % 1;
 
     if (player && player.alive) {
         camera.x = clamp(player.x - canvas.width  / 2, 0, WORLD_W - canvas.width);
@@ -550,8 +591,8 @@ function loop() {
     if (_shaking) {
         ctx.save();
         ctx.translate((Math.random() - 0.5) * _shakeAmt * 2, (Math.random() - 0.5) * _shakeAmt * 2);
-        _shakeAmt    *= 0.85;
-        _shakeFrames--;
+        _shakeAmt    *= Math.pow(0.85, _dt);
+        _shakeFrames -= _dt;
     }
 
     drawOcean();
@@ -566,8 +607,10 @@ function loop() {
             if (!boostActive &&  _prevBoosting) stopBoostSound();
             _prevBoosting = boostActive;
 
-            // Send state every 2 frames
-            if (frame % 2 === 0 && socket) {
+            // Send state ~30 times/sec regardless of frame rate
+            _stateEmitAcc += _dt;
+            if (_stateEmitAcc >= 2 && socket) {
+                _stateEmitAcc -= 2;
                 socket.emit('state', {
                     x:        player.x,
                     y:        player.y,
@@ -623,11 +666,11 @@ function loop() {
         checkCoins();
 
         if (comboTimer > 0) {
-            comboTimer--;
-            if (comboTimer === 0) { comboCount = 0; updateComboDisplay(); }
+            comboTimer -= _dt;
+            if (comboTimer <= 0) { comboTimer = 0; comboCount = 0; updateComboDisplay(); }
         }
 
-        gameStats.frames++;
+        gameStats.frames += _dt;
         if (player && player.alive) {
             gameStats.score  = player.score;
             gameStats.maxLen = player.maxLen;
@@ -652,7 +695,7 @@ function loop() {
 
     // Winner toast
     if (_winnerToastTimer > 0) {
-        _winnerToastTimer--;
+        _winnerToastTimer -= _dt;
         const _wa = Math.min(1, _winnerToastTimer / 40);
         ctx.save();
         ctx.globalAlpha = _wa;
@@ -720,12 +763,15 @@ function startGame() {
     _updateRoomHUD();
 
     if (animId) cancelAnimationFrame(animId);
-    loop();
+    _lastTs = 0; _stateEmitAcc = 0;
+    animId = requestAnimationFrame(loop);
 
     // Connect / join room — include actual spawn position so server can relay it
     const config   = { ...playerShipConfig };
     const shipType = playerShipConfig.shipType;
     const roomCode = (document.getElementById('roomCodeInput')?.value || '').trim().toUpperCase();
+    // Sync URL with the intent: if joining a specific room keep it, otherwise clear
+    if (!roomCode) history.replaceState(null, '', location.pathname);
     if (!socket) {
         initSocket();
         socket.once('connect', () => socket.emit('join', { name, config, shipType, x: spawnX, y: spawnY, roomCode }));
@@ -820,10 +866,12 @@ function _drawMenuShip(x, y, sz, angle, col, alpha) {
     ctx.restore();
 }
 
-(function idleLoop() {
+(function idleLoop(ts) {
     if (gameState === 'menu') {
+        const idleDt = (_lastTs > 0 && ts > 0) ? Math.min((ts - _lastTs) / (1000/60), 3) : 1;
+        _lastTs = ts || 0;
         frame++;
-        waveT += 0.005;
+        waveT += 0.005 * idleDt;
         drawOcean();
         const now = Date.now();
         for (const ms of _menuShips) {
@@ -837,4 +885,14 @@ function _drawMenuShip(x, y, sz, angle, col, alpha) {
         }
         requestAnimationFrame(idleLoop);
     }
+})(performance.now());
+
+// ── URL ?room= parameter → auto-fill room code input ─────────
+(function() {
+    const param = new URLSearchParams(location.search).get('room');
+    if (!param) return;
+    const clean = param.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (clean.length !== 4) return;
+    const inp = document.getElementById('roomCodeInput');
+    if (inp) inp.value = clean;
 })();

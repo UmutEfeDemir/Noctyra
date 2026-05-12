@@ -65,7 +65,7 @@ function tickAchievements(stats) {
     }
 
     // Show one toast at a time, with gap between them
-    if (_timer > 0) { _timer--; return; }
+    if (_timer > 0) { _timer -= (typeof _dt !== 'undefined' ? _dt : 1); return; }
     if (_queue.length === 0) return;
     _showToast(_queue.shift());
     _timer = 210;

@@ -105,16 +105,19 @@ class Ship {
     }
 
     eat(v) {
-        this.maxLen = Math.min(this.maxLen + v * 5, MAX_TRAIL_LEN);
-        this.score += v;
+        const trailGrow = v > 1 ? 25 : 5;   // chest: +25 nodes, coin: +5 nodes
+        const scoreGain = v > 1 ? 5  : 2;   // chest: +5 gold, coin: +2 gold
+        this.maxLen = Math.min(this.maxLen + trailGrow, MAX_TRAIL_LEN);
+        this.score += scoreGain;
     }
 
     // ── update ──────────────────────────────────────────────
     update() {
         if (!this.alive) return;
+        const dt  = typeof _dt !== 'undefined' ? _dt : 1;
 
         const spd = this.boosting ? BOOST_SPEED : BASE_SPEED;
-        const tr  = this.boosting ? BOOST_TURN  : TURN_RATE;
+        const tr  = (this.boosting ? BOOST_TURN  : TURN_RATE) * dt;
 
         if (this.isPlayer) {
             // Turn toward mouse (world coords)
@@ -125,30 +128,33 @@ class Ship {
             // Boost
             this.boosting = boostActive && boostEnergy > 5 && this.maxLen > MIN_BOOST_LEN;
             if (this.boosting) {
-                boostEnergy = Math.max(0, boostEnergy - BOOST_DRAIN);
+                boostEnergy = Math.max(0, boostEnergy - BOOST_DRAIN * dt);
                 if (boostEnergy === 0) this.boosting = false;
-                if (frame % 4 === 0 && this.maxLen > MIN_BOOST_LEN) {
+                this._boostAcc = (this._boostAcc || 0) + dt;
+                if (this._boostAcc >= 4 && this.maxLen > MIN_BOOST_LEN) {
                     this.maxLen--;
+                    this._boostAcc -= 4;
                     spawnSteam(this);
                 }
             } else {
-                boostEnergy = Math.min(BOOST_MAX, boostEnergy + BOOST_REGEN);
+                boostEnergy = Math.min(BOOST_MAX, boostEnergy + BOOST_REGEN * dt);
+                this._boostAcc = 0;
             }
             document.getElementById('boostFill').style.width = boostEnergy + '%';
 
         } else {
-            this._aiUpdate();
+            this._aiUpdate(dt);
         }
 
-        this.x += Math.cos(this.angle) * spd;
-        this.y += Math.sin(this.angle) * spd;
+        this.x += Math.cos(this.angle) * spd * dt;
+        this.y += Math.sin(this.angle) * spd * dt;
 
         // Soft boundary push
         const M = 80;
-        if (this.x < M)           this.angle = lerpAngle(this.angle, 0,           0.1);
-        if (this.x > WORLD_W - M) this.angle = lerpAngle(this.angle, Math.PI,     0.1);
-        if (this.y < M)           this.angle = lerpAngle(this.angle, Math.PI/2,   0.1);
-        if (this.y > WORLD_H - M) this.angle = lerpAngle(this.angle, -Math.PI/2,  0.1);
+        if (this.x < M)           this.angle = lerpAngle(this.angle, 0,           0.1 * dt);
+        if (this.x > WORLD_W - M) this.angle = lerpAngle(this.angle, Math.PI,     0.1 * dt);
+        if (this.y < M)           this.angle = lerpAngle(this.angle, Math.PI/2,   0.1 * dt);
+        if (this.y > WORLD_H - M) this.angle = lerpAngle(this.angle, -Math.PI/2,  0.1 * dt);
 
         this.x = clamp(this.x, 20, WORLD_W - 20);
         this.y = clamp(this.y, 20, WORLD_H - 20);
@@ -156,8 +162,8 @@ class Ship {
         this.trail.push(this.x, this.y, this.maxLen);
     }
 
-    _aiUpdate() {
-        this.aiTick--;
+    _aiUpdate(dt = 1) {
+        this.aiTick -= dt;
         if (this.aiTick <= 0) {
             // Find nearest coin — use squared distance (avoids Math.sqrt per coin)
             let best = null, bdSq = 700 * 700;
@@ -174,15 +180,18 @@ class Ship {
 
         if (this.aiCoinTarget) {
             const ta = Math.atan2(this.aiCoinTarget.y - this.y, this.aiCoinTarget.x - this.x);
-            this.angle = lerpAngle(this.angle, ta, 0.055);
+            this.angle = lerpAngle(this.angle, ta, 0.055 * dt);
             const dx = this.aiCoinTarget.x - this.x, dy = this.aiCoinTarget.y - this.y;
             if (dx*dx + dy*dy < 30*30) this.aiCoinTarget = null;
         } else {
-            this.angle = lerpAngle(this.angle, this.angle + this.aiWander * 0.08, 0.03);
+            this.angle = lerpAngle(this.angle, this.angle + this.aiWander * 0.08, 0.03 * dt);
         }
 
         this.boosting = Math.random() < 0.04 && this.maxLen > MIN_BOOST_LEN + 12;
-        if (this.boosting && frame % 4 === 0 && this.maxLen > MIN_BOOST_LEN) this.maxLen--;
+        if (this.boosting && this.maxLen > MIN_BOOST_LEN) {
+            this._boostAcc = (this._boostAcc || 0) + dt;
+            if (this._boostAcc >= 4) { this.maxLen--; this._boostAcc -= 4; }
+        }
     }
 
     // ── drawTrail ────────────────────────────────────────────
@@ -609,6 +618,7 @@ class Coin {
         ctx.save();
         ctx.translate(sx, sy + bob);
 
+        const dt = typeof _dt !== 'undefined' ? _dt : 1;
         if (this.isChest) {
             const g = ctx.createRadialGradient(0,0,2,0,0,22);
             g.addColorStop(0, 'rgba(255,200,0,0.5)');
@@ -625,7 +635,7 @@ class Coin {
             ctx.fillStyle = '#FFD700';
             ctx.beginPath(); ctx.arc(0,0,3.5,0,Math.PI*2); ctx.fill();
         } else {
-            this.rot += 0.025;
+            this.rot += 0.025 * dt;
             ctx.rotate(this.rot);
             // Glow ring — cheap alternative to shadowBlur (which is very expensive)
             ctx.fillStyle = 'rgba(255,215,0,0.22)';
@@ -747,11 +757,13 @@ class Particle {
     }
 
     update() {
-        this.x  += this.vx;
-        this.y  += this.vy;
-        this.vx *= 0.96;
-        this.vy *= 0.96;
-        this.life--;
+        const dt = typeof _dt !== 'undefined' ? _dt : 1;
+        this.x  += this.vx * dt;
+        this.y  += this.vy * dt;
+        const f  = Math.pow(0.96, dt);
+        this.vx *= f;
+        this.vy *= f;
+        this.life -= dt;
     }
 
     draw() {
