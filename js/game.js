@@ -55,6 +55,7 @@ let killMsgTmr        = 0;
 let _winnerToastTimer = 0;
 let _connectError     = false;
 let _connectTimeout   = null;
+let _connectStartTime = 0;
 let _ping             = 0;
 let _currentRoomCode  = '';
 
@@ -86,9 +87,10 @@ function _cancelLeaveTimer(id) {
 
 function initSocket() {
     socket = io(SERVER_URL, {
-        transports:           ['websocket', 'polling'],   // WS first = lower latency
-        reconnectionDelay:    1500,
-        reconnectionAttempts: 15,
+        transports:              ['websocket', 'polling'],
+        reconnectionDelay:       1000,
+        reconnectionDelayMax:    3000,
+        reconnectionAttempts:    25,
     });
 
     setInterval(() => {
@@ -655,12 +657,17 @@ function loop(ts) {
             ctx.fillText('Sunucuya bağlanılamadı — yeniden deneniyor...', canvas.width / 2, canvas.height / 2);
             ctx.font      = '14px Georgia';
             ctx.fillStyle = 'rgba(255,210,160,0.65)';
-            ctx.fillText('Railway sunucusu uyanıyor olabilir, lütfen bekleyin (25s)', canvas.width / 2, canvas.height / 2 + 28);
+            ctx.fillText('Railway sunucusu uyanıyor olabilir, lütfen bekleyin (40s)', canvas.width / 2, canvas.height / 2 + 28);
         } else {
             const dots = '.'.repeat((Math.floor(frame / 20) % 4));
             ctx.font      = 'bold 22px Georgia';
             ctx.fillStyle = 'rgba(255,255,255,0.70)';
             ctx.fillText('Sunucuya bağlanıyor' + dots, canvas.width / 2, canvas.height / 2);
+            if (Date.now() - _connectStartTime > 8000) {
+                ctx.font      = '14px Georgia';
+                ctx.fillStyle = 'rgba(255,210,160,0.70)';
+                ctx.fillText('Sunucu uyanıyor olabilir, lütfen bekleyin...', canvas.width / 2, canvas.height / 2 + 32);
+            }
         }
         ctx.textAlign = 'left';
         ctx.restore();
@@ -686,7 +693,10 @@ function loop(ts) {
 
         gameStats.frames += _dt;
         if (player && player.alive) {
-            gameStats.score  = player.score;
+            if (player.score !== gameStats.score) {
+                elScore.textContent = tf('score', { n: player.score });
+                gameStats.score = player.score;
+            }
             gameStats.maxLen = player.maxLen;
         }
         tickAchievements(gameStats);
@@ -760,9 +770,10 @@ function startGame() {
     gameStats.kills = 0; gameStats.score  = 0;
     gameStats.frames = 0; gameStats.maxLen = 0; gameStats.maxCombo = 0;
     gameState     = 'connecting';  // → 'playing' after room_joined
-    _connectError = false;
+    _connectError     = false;
+    _connectStartTime = Date.now();
     if (_connectTimeout) clearTimeout(_connectTimeout);
-    _connectTimeout = setTimeout(_showConnectError, 25000);
+    _connectTimeout = setTimeout(_showConnectError, 40000);
 
     resetAchievements();
     remotePlayers.clear();

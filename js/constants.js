@@ -6,7 +6,7 @@ const PLAYER_SPAWN_Y = WORLD_H / 2;
 const SAFE_RADIUS    = 750;
 
 // ── MOVEMENT ─────────────────────────────────────────────────
-const TRAIL_GAP     = 9;     // min px between trail nodes (higher = fewer nodes = better perf)
+const TRAIL_GAP     = 6;     // min px between trail nodes
 const BASE_SPEED    = 1.6;   // same for all ship types (sandal / gemi / savas)
 const BOOST_SPEED   = 3.0;
 const TURN_RATE     = 0.045;

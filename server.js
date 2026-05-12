@@ -237,11 +237,13 @@ io.on('connection', socket => {
         const room = rooms.get(roomId);
         if (!room) return;
         const pd = room.players.get(socket.id);
-        if (pd) dbSaveScore(pd.name, pd.score || 0, pd.kills || 0).catch(() => {});
+        // Already removed by a kill event — ignore duplicate die
+        if (!pd) return;
+        dbSaveScore(pd.name, pd.score || 0, pd.kills || 0).catch(() => {});
         room.players.delete(socket.id);
         socket.to(roomId).emit('player_die', { id: socket.id, killedBy, droppedCoins: droppedCoins || [] });
         io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
-        console.log(`[DIE] ${pd?.name || socket.id} killed by ${killedBy || 'island'}`);
+        console.log(`[DIE] ${pd.name} killed by ${killedBy || 'island'}`);
     });
 
     socket.on('kill', ({ victimId }) => {
@@ -250,9 +252,11 @@ io.on('connection', socket => {
         if (!room) return;
         const victim = room.players.get(victimId);
         const me     = room.players.get(socket.id);
-        if (!victim) return;
+        // victim must exist AND killer must still be alive in this room
+        // (prevents B's delayed kill(A) from landing after A already killed B)
+        if (!victim || !me) return;
 
-        if (me) me.kills = (me.kills || 0) + 1;
+        me.kills = (me.kills || 0) + 1;
 
         const bonus = Math.round((victim.score || 0) + 12);
         dbSaveScore(victim.name, victim.score || 0, victim.kills || 0).catch(() => {});

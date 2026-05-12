@@ -99,16 +99,20 @@ class Ship {
         this.trail.seed(x, y, this.angle, TRAIL_INIT_LEN);
 
         // AI state
-        this.aiTick       = 0;
-        this.aiWander     = Math.random() * Math.PI * 2;
-        this.aiCoinTarget = null;
+        this.aiTick          = 0;
+        this.aiWander        = Math.random() * Math.PI * 2;
+        this.aiCoinTarget    = null;
+        this._wasBoostingLast = false;
     }
 
     eat(v) {
-        const trailGrow = v > 1 ? 25 : 5;   // chest: +25 nodes, coin: +5 nodes
-        const scoreGain = v > 1 ? 5  : 2;   // chest: +5 gold, coin: +2 gold
+        const trailGrow = v > 1 ? 25 : 5;
+        const scoreGain = v > 1 ? 5  : 2;
         this.maxLen = Math.min(this.maxLen + trailGrow, MAX_TRAIL_LEN);
         this.score += scoreGain;
+        // Ship grows with score — size only ever increases, caps at 500 score
+        const targetSize = 13 + Math.min(this.score, 500) * 0.03;
+        if (targetSize > this.size) this.size = targetSize;
     }
 
     // ── update ──────────────────────────────────────────────
@@ -128,6 +132,9 @@ class Ship {
             // Boost
             this.boosting = boostActive && boostEnergy > 5 && this.maxLen > MIN_BOOST_LEN;
             if (this.boosting) {
+                // Deduct 5 gold the moment boost activates (once per press, not per frame)
+                if (!this._wasBoostingLast) this.score = Math.max(0, this.score - 5);
+
                 boostEnergy = Math.max(0, boostEnergy - BOOST_DRAIN * dt);
                 if (boostEnergy === 0) this.boosting = false;
                 this._boostAcc = (this._boostAcc || 0) + dt;
@@ -140,6 +147,7 @@ class Ship {
                 boostEnergy = Math.min(BOOST_MAX, boostEnergy + BOOST_REGEN * dt);
                 this._boostAcc = 0;
             }
+            this._wasBoostingLast = this.boosting;
             document.getElementById('boostFill').style.width = boostEnergy + '%';
 
         } else {
@@ -216,7 +224,7 @@ class Ship {
 
         // Stride rendering: for long trails skip every other node.
         // 9px gap × stride 2 = 18px between drawn points — still visually smooth.
-        const stride = t.len > 70 ? 2 : 1;
+        const stride = t.len > 130 ? 2 : 1;
 
         ctx.beginPath();
         ctx.moveTo(hx, hy);
@@ -719,15 +727,23 @@ class RemotePlayer extends Ship {
         const sx = initX ?? PLAYER_SPAWN_X;
         const sy = initY ?? PLAYER_SPAWN_Y;
         super(sx, sy, false, ci, name, (config && config.hull) ? config : null, shipType || 'gemi');
-        this.id       = id;
-        this._targetX = sx;
-        this._targetY = sy;
+        this.id        = id;
+        this._anchorX  = sx;
+        this._anchorY  = sy;
+        this._anchorMs = performance.now();
         this.trail.trimToNewest(0);
     }
 
     applyState({ x, y, angle, size, score, maxLen, boosting }) {
-        this._targetX = x;
-        this._targetY = y;
+        // Snap visual position on big teleports (spawn / lag spike), otherwise keep current
+        const dx = x - this.x, dy = y - this.y;
+        if (dx * dx + dy * dy > 200 * 200) { this.x = x; this.y = y; }
+
+        // Store server snapshot as dead-reckoning anchor
+        this._anchorX  = x;
+        this._anchorY  = y;
+        this._anchorMs = performance.now();
+
         this.angle    = angle    ?? this.angle;
         this.size     = size     ?? this.size;
         this.score    = score    ?? this.score;
@@ -738,18 +754,26 @@ class RemotePlayer extends Ship {
     update() {
         if (!this.alive) return;
         const dt = typeof _dt !== 'undefined' ? _dt : 1;
-        const dx = this._targetX - this.x;
-        const dy = this._targetY - this.y;
-        // Snap if too far (first update after spawn / big gap) — otherwise lerp smoothly
-        if (dx * dx + dy * dy > 250 * 250) {
-            this.x = this._targetX;
-            this.y = this._targetY;
+
+        // Dead reckoning: project the anchor forward by how long ago we got it.
+        // This makes remote ships appear to move at their real speed instead of
+        // creeping toward a stale snapshot.
+        const ageMs  = performance.now() - this._anchorMs;
+        const ageDt  = Math.min(ageMs * 60 / 1000, 4);   // cap at 4 frames (~67ms) to limit prediction error
+        const spd    = this.boosting ? BOOST_SPEED : BASE_SPEED;
+        const predX  = this._anchorX + Math.cos(this.angle) * spd * ageDt;
+        const predY  = this._anchorY + Math.sin(this.angle) * spd * ageDt;
+
+        // Fast lerp toward prediction — corrects for turn-prediction error
+        const ex = predX - this.x, ey = predY - this.y;
+        if (ex * ex + ey * ey > 200 * 200) {
+            this.x = predX; this.y = predY;
         } else {
-            // Exponential lerp — frame-rate independent, ~87% covered in one 50ms server tick
-            const f = 1 - Math.pow(0.50, dt);
-            this.x += dx * f;
-            this.y += dy * f;
+            const f = 1 - Math.pow(0.18, dt);   // ~82% per frame → very responsive
+            this.x += ex * f;
+            this.y += ey * f;
         }
+
         this.trail.push(this.x, this.y, this.maxLen);
     }
 }
