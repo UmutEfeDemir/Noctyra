@@ -25,6 +25,7 @@ let socket        = null;
 let coins         = [];
 let particles     = [];
 let islands       = [];
+let _coinId       = 0;           // global coin ID counter (reset by generateWorld)
 let camera        = { x: 0, y: 0 };
 let mouse         = { x: 400, y: 300 };
 let boostActive   = false;
@@ -60,6 +61,7 @@ function initSocket() {
     socket = io(SERVER_URL);
 
     socket.on('room_joined', ({ seed, players }) => {
+        _coinId = 0;             // must be reset BEFORE generateWorld() assigns IDs
         resetWorldSeed(seed);
         generateWorld();
 
@@ -75,6 +77,7 @@ function initSocket() {
         gameState   = 'playing';
         gracePeriod = SPAWN_GRACE;
         _updateRoomHUD();
+        updateRoomLB();
     });
 
     socket.on('player_join', p => {
@@ -89,29 +92,48 @@ function initSocket() {
         if (rp && rp.alive) rp.applyState(data);
     });
 
-    socket.on('player_die', ({ id, killedBy }) => {
-        // If it's us who died (killed by another player's report)
+    socket.on('player_die', ({ id, killedBy, droppedCoins }) => {
+        // If it's us who died
         if (id === socket.id) {
             playerDie(killedBy);
             return;
         }
         const rp = remotePlayers.get(id);
-        if (rp && rp.alive) {
-            rp.alive = false;
-            spawnExplosion(rp.x, rp.y);
-            const drops = Math.floor(rp.maxLen / 9);
-            for (let i = 0; i < drops; i++) spawnCoin(rp);
-            // Schedule removal — cancelled if player re-joins before timeout
-            const t = setTimeout(() => { remotePlayers.delete(id); _leaveTimers.delete(id); }, 4000);
-            _leaveTimers.set(id, t);
+        if (rp) {
+            if (rp.alive) {
+                rp.alive = false;
+                spawnExplosion(rp.x, rp.y);
+                const t = setTimeout(() => { remotePlayers.delete(id); _leaveTimers.delete(id); }, 4000);
+                _leaveTimers.set(id, t);
+            }
+            // Add synced drop coins (even on 2nd player_die event carrying the actual drops)
+            if (droppedCoins && droppedCoins.length > 0) {
+                for (const c of droppedCoins) {
+                    if (!coins.some(co => co.id === c.id)) {
+                        coins.push(new Coin(c.id, c.x, c.y, c.v));
+                    }
+                }
+            }
         }
         _updateRoomHUD();
+        updateRoomLB();
     });
 
     socket.on('player_leave', ({ id }) => {
         _cancelLeaveTimer(id);
         remotePlayers.delete(id);
         _updateRoomHUD();
+        updateRoomLB();
+    });
+
+    // Coin sync — collector tells others which coin vanished + where the replacement is
+    socket.on('coin_take', ({ id }) => {
+        const i = coins.findIndex(c => c.id === id);
+        if (i !== -1) coins.splice(i, 1);
+    });
+
+    socket.on('coin_add', ({ id, x, y, v }) => {
+        if (!coins.some(c => c.id === id)) coins.push(new Coin(id, x, y, v));
     });
 
     socket.on('kill_confirmed', ({ victimName, victimMaxLen, bonus }) => {
@@ -183,8 +205,6 @@ function checkCollisions() {
             if (dx * dx + dy * dy < (rp.size + 4) * (rp.size + 4)) {
                 rp.alive = false;
                 spawnKillFX(rp.x, rp.y);
-                const drops = Math.floor(rp.maxLen / 9);
-                for (let k = 0; k < drops; k++) spawnCoin(rp);
                 if (socket) socket.emit('kill', { victimId: id });
                 break;
             }
@@ -219,8 +239,14 @@ function playerDie(killedBy) {
     spawnExplosion(player.x, player.y);
     playSound('die');
 
+    // Spawn drops locally and broadcast so others can collect them
     const drops = Math.floor(player.maxLen / 8);
-    for (let i = 0; i < drops; i++) spawnCoin(player);
+    const droppedCoins = [];
+    for (let i = 0; i < drops; i++) {
+        const c = spawnCoin(player);
+        droppedCoins.push({ id: c.id, x: c.x, y: c.y, v: c.v });
+    }
+    if (socket) socket.emit('die', { killedBy, droppedCoins });
 
     _deathKiller = killedBy;
     _deathScore  = player.score;
@@ -257,7 +283,17 @@ function checkCoins() {
             elScore.textContent = tf('score', { n: player.score });
             gameStats.score     = player.score;
             coins.splice(i, 1);
-            co.isChest ? setTimeout(spawnChest, 6000) : spawnCoin();
+            if (socket) socket.emit('coin_take', { id: co.id });
+
+            if (co.isChest) {
+                setTimeout(() => {
+                    const nc = spawnChest();
+                    if (socket) socket.emit('coin_add', { id: nc.id, x: nc.x, y: nc.y, v: nc.v });
+                }, 6000);
+            } else {
+                const nc = spawnCoin();
+                if (socket) socket.emit('coin_add', { id: nc.id, x: nc.x, y: nc.y, v: nc.v });
+            }
         }
     }
 }
@@ -266,6 +302,26 @@ function checkCoins() {
 function _updateRoomHUD() {
     const el = document.getElementById('roomInfo');
     if (el) el.textContent = `${remotePlayers.size + (player && player.alive ? 1 : 0)}/10 oyuncu`;
+}
+
+function updateRoomLB() {
+    const el = document.getElementById('roomLB');
+    if (!el || gameState !== 'playing') { if (el) el.innerHTML = ''; return; }
+
+    const entries = [];
+    if (player && player.alive) entries.push({ name: player.name, score: player.score, isMe: true });
+    for (const rp of remotePlayers.values()) {
+        if (rp.alive) entries.push({ name: rp.name, score: rp.score, isMe: false });
+    }
+    entries.sort((a, b) => b.score - a.score);
+
+    el.innerHTML = entries.slice(0, 8).map((e, i) =>
+        `<div class="rlb-entry${e.isMe ? ' rlb-me' : ''}">` +
+        `<span class="rlb-rank">${i + 1}</span>` +
+        `<span class="rlb-name">${e.name}</span>` +
+        `<span class="rlb-score">${e.score}</span>` +
+        `</div>`
+    ).join('');
 }
 
 function updateComboDisplay() {
@@ -382,6 +438,7 @@ function loop() {
         }
         tickAchievements(gameStats);
 
+        if (frame % 60 === 0) updateRoomLB();
     }
 
     drawMinimap();

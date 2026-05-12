@@ -589,7 +589,8 @@ class Ship {
 
 // ── COIN ─────────────────────────────────────────────────────
 class Coin {
-    constructor(x, y, v) {
+    constructor(id, x, y, v) {
+        this.id      = id;
         this.x       = x;
         this.y       = y;
         this.v       = v || 1;

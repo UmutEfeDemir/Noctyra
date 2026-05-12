@@ -78,13 +78,24 @@ io.on('connection', socket => {
         socket.to(roomId).emit('player_state', { id: socket.id, ...data });
     });
 
-    // Player self-reports death (hit island or another player's trail)
-    socket.on('die', ({ killedBy }) => {
+    // Coin sync — relay collection/addition to room
+    socket.on('coin_take', ({ id }) => {
+        if (!roomId) return;
+        socket.to(roomId).emit('coin_take', { id });
+    });
+
+    socket.on('coin_add', ({ id, x, y, v }) => {
+        if (!roomId) return;
+        socket.to(roomId).emit('coin_add', { id, x, y, v });
+    });
+
+    // Player self-reports death — includes their own dropped coin positions
+    socket.on('die', ({ killedBy, droppedCoins }) => {
         if (!roomId) return;
         const room = rooms.get(roomId);
         if (!room) return;
         room.players.delete(socket.id);   // free the room slot immediately
-        socket.to(roomId).emit('player_die', { id: socket.id, killedBy });
+        socket.to(roomId).emit('player_die', { id: socket.id, killedBy, droppedCoins: droppedCoins || [] });
         io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
         console.log(`[DIE] ${socket.id} killed by ${killedBy}`);
     });
@@ -109,8 +120,8 @@ io.on('connection', socket => {
             bonus,
         });
 
-        // Tell everyone victim died
-        io.to(roomId).emit('player_die', { id: victimId, killedBy: me?.name || '?' });
+        // Notify everyone — victim will self-report drops via 'die' event when they receive this
+        io.to(roomId).emit('player_die', { id: victimId, killedBy: me?.name || '?', droppedCoins: [] });
         io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
         console.log(`[KILL] ${me?.name} killed ${victim.name}`);
     });

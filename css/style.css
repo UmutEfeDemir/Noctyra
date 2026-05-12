@@ -72,6 +72,31 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     background: rgba(0,20,40,0.85);
 }
 
+/* ── In-game room leaderboard ───────────────────────────────── */
+#roomLB {
+    position: fixed; top: 20px; right: 20px;
+    background: rgba(4,10,28,0.82);
+    border: 1.5px solid rgba(110,145,220,0.35);
+    border-radius: 9px;
+    padding: 8px 12px;
+    font-family: Georgia, serif;
+    font-size: 13px;
+    min-width: 160px;
+    pointer-events: none;
+    z-index: 10;
+}
+.rlb-entry {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 0;
+    color: rgba(170,200,255,0.75);
+    border-bottom: 1px solid rgba(80,110,200,0.12);
+}
+.rlb-entry:last-child { border-bottom: none; }
+.rlb-entry.rlb-me { color: #FFD700; font-weight: bold; }
+.rlb-rank  { width: 16px; text-align: right; opacity: 0.5; font-size: 11px; }
+.rlb-name  { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rlb-score { text-align: right; opacity: 0.85; }
+
 
 /* ── Kill message ───────────────────────────────────────────── */
 #killMsg {

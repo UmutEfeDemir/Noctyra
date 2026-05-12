@@ -6,6 +6,7 @@ function generateWorld() {
     islands   = [];
     coins     = [];
     particles = [];
+    _coinId   = 0;   // reset coin ID counter — declared in game.js
 
     // Islands — seeded so all clients in same room see identical layout
     for (let i = 0; i < 14; i++) {
@@ -18,19 +19,41 @@ function generateWorld() {
         islands.push(new Island(x, y, sRnd(28, 95)));
     }
 
-    for (let i = 0; i < COIN_TARGET;  i++) spawnCoin();
-    for (let i = 0; i < CHEST_TARGET; i++) spawnChest();
+    // Coins + chests — seeded so all clients see the same initial positions
+    for (let i = 0; i < COIN_TARGET;  i++) _spawnCoinSeeded();
+    for (let i = 0; i < CHEST_TARGET; i++) _spawnChestSeeded();
 }
 
 // ── Coin / chest spawning ────────────────────────────────────
+// Seeded versions — used only during generateWorld() for consistent layout
+function _spawnCoinSeeded() {
+    const x = sRnd(80, WORLD_W - 80);
+    const y = sRnd(80, WORLD_H - 80);
+    const c = new Coin(_coinId++, x, y, 1);
+    coins.push(c);
+    return c;
+}
+function _spawnChestSeeded() {
+    const x = sRnd(100, WORLD_W - 100);
+    const y = sRnd(100, WORLD_H - 100);
+    const c = new Coin(_coinId++, x, y, 5);
+    coins.push(c);
+    return c;
+}
+
+// Random versions — used for replacements/drops; return the coin for network broadcast
 function spawnCoin(near) {
     const x = near ? clamp(near.x + rnd(-80,80), 80, WORLD_W-80) : rnd(80, WORLD_W-80);
     const y = near ? clamp(near.y + rnd(-80,80), 80, WORLD_H-80) : rnd(80, WORLD_H-80);
-    coins.push(new Coin(x, y, 1));
+    const c = new Coin(_coinId++, x, y, 1);
+    coins.push(c);
+    return c;
 }
 
 function spawnChest() {
-    coins.push(new Coin(rnd(100, WORLD_W-100), rnd(100, WORLD_H-100), 5));
+    const c = new Coin(_coinId++, rnd(100, WORLD_W-100), rnd(100, WORLD_H-100), 5);
+    coins.push(c);
+    return c;
 }
 
 
