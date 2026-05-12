@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOCTYRA</title>
+    <link rel="icon" type="image/png" href="noctyra-logo.png">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.11.0/css/flag-icons.min.css">
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+    <div id="scoreDisplay">0 Altın</div>
+    <div id="nameDisplay"></div>
+    <div id="highScoreHUD"></div>
+</div>
+
+<!-- Combo display -->
+<div id="comboDisplay"></div>
+
+<!-- Achievement toast -->
+<div id="achToast" class="ach-hidden">
+    <span class="ach-icon"></span>
+    <div class="ach-texts">
+        <div class="ach-label" data-i18n="achUnlocked">BAŞARIM AÇILDI</div>
+        <div class="ach-name"></div>
+    </div>
+</div>
+
+<div id="boostBar">
+    <div id="boostLabel" data-i18n="boostLabel">Rüzgar Gücü</div>
+    <div id="boostBg"><div id="boostFill" style="width:100%"></div></div>
+</div>
+
+<canvas id="minimap" width="160" height="160"></canvas>
+
+<div id="leaderboard">
+    <h3 data-i18n="lbTitle">Korsan Sıralaması</h3>
+    <div id="lbContent"></div>
+</div>
+
+<div id="killMsg"></div>
+
+<!-- Menu / Death overlay -->
+<div id="overlay">
+    <div id="sparkleLayer"></div>
+
+    <!-- Language dropdown — survives death-screen rebuild (outside overlayContent) -->
+    <div id="langDropdown">
+        <button id="langToggle" onclick="toggleLangMenu()">
+            <span id="langFlag" class="fi fi-tr"></span>
+            <span id="langCode">TR</span>
+            <svg class="lang-arrow" viewBox="0 0 10 6" width="10" height="6">
+                <path d="M0 0l5 6 5-6z" fill="currentColor"/>
+            </svg>
+        </button>
+        <div id="langMenu">
+            <div class="lang-option active" data-lang="tr" onclick="selectLang('tr')">
+                <span class="fi fi-tr lang-flag"></span><span>Türkçe</span>
+            </div>
+            <div class="lang-option" data-lang="en" onclick="selectLang('en')">
+                <span class="fi fi-gb lang-flag"></span><span>English</span>
+            </div>
+            <div class="lang-option" data-lang="ru" onclick="selectLang('ru')">
+                <span class="fi fi-ru lang-flag"></span><span>Русский</span>
+            </div>
+            <div class="lang-option" data-lang="fr" onclick="selectLang('fr')">
+                <span class="fi fi-fr lang-flag"></span><span>Français</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="overlayContent" class="overlay-content">
+        <img src="noctyra-logo.png" class="game-logo" alt="Noctyra" onerror="this.style.display='none'">
+        <h1 data-i18n="title">NOCTYRA</h1>
+        <div class="subtitle" data-i18n="subtitle">Denizlerin En Ünlü Korsanı Ol!</div>
+        <input id="nameInput" type="text" maxlength="15"
+               placeholder="Korsan Adın..." value=""
+               data-i18n-placeholder="namePlaceholder">
+        <button id="startBtn" onclick="startGame()" data-i18n="startBtn">YELKEN AÇ</button>
+        <div id="controls" data-i18n-html="controls">
+            Fare ile yön ver &nbsp;|&nbsp; Sol tık veya BOŞLUK: Hızlan<br>
+            Düşman gemisini bedenine çarparak batır!<br>
+            Doubloon ve sandıklar topla, gemini büyüt!
+        </div>
+    </div>
+</div>
+
+<!-- Ship Customizer Panel -->
+<div id="shipCustomizer">
+    <h4 data-i18n="shipCustomTitle">GEMİ ÖZELLEŞTİR</h4>
+    <canvas id="shipPreview" width="100" height="100"></canvas>
+    <div class="cust-row">
+        <div class="cust-label" data-i18n="shipType">GEMİ TÜRÜ</div>
+        <div id="typeButtons" class="type-buttons"></div>
+    </div>
+    <div class="cust-row">
+        <div class="cust-label" data-i18n="hull">TEKNE</div>
+        <div class="color-swatches" id="hullSwatches"></div>
+    </div>
+    <div class="cust-row">
+        <div class="cust-label" data-i18n="sail">YELKEN</div>
+        <div class="color-swatches" id="sailSwatches"></div>
+    </div>
+    <div class="cust-row">
+        <div class="cust-label" data-i18n="accent">AKSAN</div>
+        <div class="color-swatches" id="accentSwatches"></div>
+    </div>
+    <div class="cust-row">
+        <div class="cust-label" data-i18n="wake">İZ RENGİ</div>
+        <div class="color-swatches" id="wakeSwatches"></div>
+    </div>
+</div>
+
+<!-- DB module loads async; exposes dbSaveScore / dbSaveAchievement / dbGetLeaderboard as globals -->
+<script type="module" src="js/db.js"></script>
+
+<!-- Script loading order: i18n → constants → audio → achievements → entities → world → renderer → customizer → game -->
+<script src="js/i18n.js"></script>
+<script src="js/constants.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/world.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/customizer.js"></script>
+<script src="js/game.js"></script>
+
+</body>
+</html>

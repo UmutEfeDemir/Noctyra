@@ -1,0 +1,439 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #040a14; overflow: hidden; cursor: default; }
+#gameCanvas { display: block; }
+
+/* ── HUD ────────────────────────────────────────────────────── */
+#hud {
+    position: fixed; top: 20px; left: 20px;
+    color: #FFD700; pointer-events: none; z-index: 10;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
+    font-family: Georgia, serif;
+}
+#scoreDisplay { font-size: 26px; font-weight: bold; letter-spacing: 2px; }
+#nameDisplay  { font-size: 15px; color: #aaa; margin-top: 3px; }
+
+#livesDisplay { display: flex; gap: 5px; margin-top: 6px; }
+.heart {
+    font-size: 20px; line-height: 1;
+    color: rgba(100,30,30,0.40);
+    transition: color 0.25s, filter 0.25s;
+    filter: none;
+}
+.heart.active {
+    color: #E05050;
+    filter: drop-shadow(0 0 6px rgba(220,60,60,0.80));
+}
+
+#highScoreHUD {
+    font-size: 12px; color: rgba(160,185,230,0.55);
+    margin-top: 4px; letter-spacing: 1px;
+}
+
+/* ── Combo display ───────────────────────────────────────────── */
+#comboDisplay {
+    position: fixed; top: 50%; right: 55px;
+    transform: translateY(-50%);
+    color: #FFD700; font-family: Georgia, serif;
+    font-size: 30px; font-weight: bold; letter-spacing: 3px;
+    text-shadow: 0 0 22px rgba(255,200,0,0.85), 0 2px 4px rgba(0,0,0,0.9);
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 10;
+}
+
+/* ── Achievement toast ───────────────────────────────────────── */
+#achToast {
+    position: fixed; bottom: 90px; left: 50%;
+    transform: translateX(-50%) translateY(18px);
+    background: rgba(4,10,28,0.96);
+    border: 1.5px solid rgba(255,200,50,0.45);
+    border-radius: 10px; padding: 12px 20px;
+    display: flex; align-items: center; gap: 13px;
+    font-family: Georgia, serif;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 20px rgba(200,150,0,0.08);
+    z-index: 200;
+    opacity: 0; transition: opacity 0.35s, transform 0.35s;
+}
+#achToast.ach-show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+#achToast.ach-hidden { display: none; }
+.ach-icon  { font-size: 26px; line-height: 1; }
+.ach-label { font-size: 10px; color: rgba(255,200,50,0.70); letter-spacing: 2px; margin-bottom: 3px; text-transform: uppercase; }
+.ach-name  { font-size: 14px; color: #E8D080; letter-spacing: 0.5px; }
+
+/* ── Boost bar ──────────────────────────────────────────────── */
+#boostBar { position: fixed; bottom: 20px; left: 20px; pointer-events: none; }
+#boostLabel { color: #FFD700; font-family: Georgia, serif; font-size: 13px; margin-bottom: 4px; }
+#boostBg {
+    width: 160px; height: 12px;
+    background: rgba(0,0,0,0.5); border: 1px solid #FFD700; border-radius: 6px; overflow: hidden;
+}
+#boostFill {
+    height: 100%;
+    background: linear-gradient(90deg, #FF8800, #FFD700);
+    border-radius: 6px; transition: width 0.08s;
+}
+
+/* ── Minimap ─────────────────────────────────────────────────── */
+#minimap {
+    position: fixed; bottom: 20px; right: 20px;
+    border: 2px solid #8B6914; border-radius: 4px;
+    background: rgba(0,20,40,0.85);
+}
+
+/* ── Leaderboard ────────────────────────────────────────────── */
+#leaderboard {
+    position: fixed; top: 20px; right: 20px;
+    background: rgba(0,0,0,0.75); border: 2px solid #8B6914; border-radius: 8px;
+    padding: 10px 15px; color: #FFD700; font-family: Georgia, serif;
+    min-width: 190px; pointer-events: none;
+}
+#leaderboard h3 {
+    text-align: center; border-bottom: 1px solid #8B6914;
+    padding-bottom: 5px; margin-bottom: 8px; font-size: 14px;
+}
+.lb-entry { font-size: 13px; padding: 2px 0; display: flex; justify-content: space-between; gap: 10px; }
+.lb-player { color: #00FF88; font-weight: bold; }
+
+/* ── Kill message ───────────────────────────────────────────── */
+#killMsg {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: #00FF88; font-size: 26px; font-family: Georgia, serif; letter-spacing: 2px;
+    text-shadow: 0 0 15px #00FF88; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   OVERLAY — NOCTYRA brand aesthetic
+   Dark deep navy + silver metallic + star field
+   ═══════════════════════════════════════════════════════════════ */
+#overlay {
+    position: fixed; inset: 0;
+    /* Deep navy base — darker edges, subtle blue-indigo center */
+    background:
+        radial-gradient(ellipse at 50% 38%, #0e2248 0%, #080e22 55%, #030810 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 100; font-family: Georgia, serif;
+    overflow: hidden;
+}
+#overlay.hidden { display: none; }
+
+/* Static star field — 28 scattered dots via radial-gradient */
+#overlay::before {
+    content: '';
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+        radial-gradient(circle 1.5px at  8% 11%, rgba(255,255,255,0.85), transparent 100%),
+        radial-gradient(circle 1px  at 22%  7%, rgba(210,225,255,0.70), transparent 100%),
+        radial-gradient(circle 2px  at 36% 17%, rgba(255,255,255,0.90), transparent 100%),
+        radial-gradient(circle 1px  at 54%  4%, rgba(210,225,255,0.65), transparent 100%),
+        radial-gradient(circle 1.5px at 70% 13%, rgba(255,255,255,0.80), transparent 100%),
+        radial-gradient(circle 1px  at 84%  8%, rgba(210,225,255,0.60), transparent 100%),
+        radial-gradient(circle 1.5px at 95% 16%, rgba(255,255,255,0.75), transparent 100%),
+        radial-gradient(circle 1px  at 13% 34%, rgba(210,225,255,0.60), transparent 100%),
+        radial-gradient(circle 2px  at 29% 40%, rgba(255,255,255,0.80), transparent 100%),
+        radial-gradient(circle 1px  at 46% 27%, rgba(210,225,255,0.65), transparent 100%),
+        radial-gradient(circle 1.5px at 64% 36%, rgba(255,255,255,0.75), transparent 100%),
+        radial-gradient(circle 1px  at 80% 24%, rgba(210,225,255,0.55), transparent 100%),
+        radial-gradient(circle 1px  at 93% 32%, rgba(255,255,255,0.65), transparent 100%),
+        radial-gradient(circle 1.5px at  5% 55%, rgba(255,255,255,0.70), transparent 100%),
+        radial-gradient(circle 1px  at 19% 63%, rgba(210,225,255,0.55), transparent 100%),
+        radial-gradient(circle 2px  at 37% 70%, rgba(255,255,255,0.80), transparent 100%),
+        radial-gradient(circle 1px  at 57% 58%, rgba(210,225,255,0.60), transparent 100%),
+        radial-gradient(circle 1.5px at 75% 67%, rgba(255,255,255,0.70), transparent 100%),
+        radial-gradient(circle 1px  at 90% 53%, rgba(210,225,255,0.55), transparent 100%),
+        radial-gradient(circle 1px  at 98% 62%, rgba(255,255,255,0.60), transparent 100%),
+        radial-gradient(circle 1.5px at 10% 80%, rgba(255,255,255,0.65), transparent 100%),
+        radial-gradient(circle 1px  at 26% 88%, rgba(210,225,255,0.55), transparent 100%),
+        radial-gradient(circle 2px  at 44% 77%, rgba(255,255,255,0.75), transparent 100%),
+        radial-gradient(circle 1px  at 61% 85%, rgba(210,225,255,0.55), transparent 100%),
+        radial-gradient(circle 1.5px at 78% 79%, rgba(255,255,255,0.65), transparent 100%),
+        radial-gradient(circle 1px  at 92% 87%, rgba(210,225,255,0.50), transparent 100%),
+        radial-gradient(circle 1px  at 50% 93%, rgba(255,255,255,0.55), transparent 100%),
+        radial-gradient(circle 1.5px at  3% 42%, rgba(210,225,255,0.60), transparent 100%);
+    animation: starPulseA 5s ease-in-out infinite alternate;
+}
+
+/* Brighter twinkle layer — fewer, larger, offset timing */
+#sparkleLayer {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+        radial-gradient(circle 2.5px at 25%  8%, rgba(255,255,255,1.0), transparent 100%),
+        radial-gradient(circle 2px  at 73% 20%, rgba(220,235,255,0.95), transparent 100%),
+        radial-gradient(circle 2.5px at 42% 54%, rgba(255,255,255,0.90), transparent 100%),
+        radial-gradient(circle 2px  at 85% 70%, rgba(220,235,255,0.90), transparent 100%),
+        radial-gradient(circle 2.5px at 15% 75%, rgba(255,255,255,0.95), transparent 100%),
+        radial-gradient(circle 2px  at 58% 88%, rgba(220,235,255,0.85), transparent 100%);
+    animation: starPulseB 3.5s ease-in-out infinite alternate;
+}
+
+@keyframes starPulseA {
+    0%   { opacity: 0.45; }
+    100% { opacity: 1.0;  }
+}
+@keyframes starPulseB {
+    0%   { opacity: 0.3;  }
+    100% { opacity: 0.85; }
+}
+
+/* Nebula glow — very subtle coloured fog patches */
+#overlay::after {
+    content: '';
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background:
+        radial-gradient(ellipse 40% 20% at 20% 30%, rgba(40,80,180,0.06), transparent),
+        radial-gradient(ellipse 30% 25% at 80% 70%, rgba(80,40,160,0.05), transparent),
+        radial-gradient(ellipse 50% 15% at 60% 15%, rgba(20,60,140,0.06), transparent);
+}
+
+/* Content wrapper — sits above all background layers */
+.overlay-content {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center;
+    width: 100%; padding: 20px;
+}
+
+/* Logo image */
+.game-logo {
+    width: 150px; height: 150px;
+    object-fit: contain;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 0 18px rgba(120,160,240,0.45));
+}
+
+/* Title */
+#overlay h1 {
+    font-size: 60px;
+    font-weight: normal;
+    letter-spacing: 18px;
+    color: #D8E8F8;
+    text-shadow:
+        0 0 12px rgba(160,195,255,0.95),
+        0 0 35px rgba(100,150,230,0.65),
+        0 0 75px rgba(60,110,210,0.35),
+        0 3px 6px rgba(0,0,0,0.95);
+    margin-bottom: 6px;
+}
+
+.subtitle {
+    font-size: 13px;
+    color: rgba(170,200,245,0.88);
+    letter-spacing: 3px;
+    margin-bottom: 36px;
+    text-transform: uppercase;
+    text-shadow: 0 0 18px rgba(80,130,230,0.35);
+}
+
+/* Death screen */
+.death-msg {
+    font-size: 36px;
+    color: #E05050;
+    letter-spacing: 4px;
+    margin-bottom: 8px;
+    text-shadow: 0 0 28px rgba(220,60,60,0.75), 0 2px 4px rgba(0,0,0,0.95);
+}
+.death-killer {
+    font-size: 16px;
+    color: rgba(175,200,245,0.88);
+    margin-bottom: 14px;
+    letter-spacing: 1px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+}
+.final-score {
+    font-size: 20px;
+    color: #C0D4F0;
+    margin-bottom: 30px;
+    letter-spacing: 1px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+}
+.final-score b { color: #E0EEFF; }
+
+/* Name input */
+#nameInput {
+    font-size: 18px; padding: 12px 22px;
+    border: 1.5px solid rgba(130,160,225,0.50);
+    background: rgba(4,10,28,0.88);
+    color: #B8CCE8;
+    font-family: Georgia, serif;
+    border-radius: 5px; text-align: center; outline: none;
+    margin-bottom: 18px; width: 280px;
+    box-shadow: 0 0 18px rgba(50,90,200,0.12), inset 0 0 14px rgba(0,6,22,0.6);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+#nameInput::placeholder { color: rgba(130,165,220,0.65); }
+#nameInput:focus {
+    border-color: rgba(170,200,255,0.72);
+    box-shadow: 0 0 28px rgba(80,130,230,0.28), inset 0 0 14px rgba(0,6,22,0.6);
+}
+
+/* Start / restart button */
+#startBtn {
+    font-size: 17px; padding: 14px 54px;
+    background: linear-gradient(155deg, #111e3c 0%, #1b3268 50%, #111e3c 100%);
+    border: 1.5px solid rgba(145,175,240,0.48);
+    color: #C0D4F4;
+    border-radius: 6px; cursor: pointer;
+    font-family: Georgia, serif; font-weight: normal; letter-spacing: 5px;
+    transition: all 0.2s;
+    box-shadow: 0 0 28px rgba(50,100,210,0.18), inset 0 1px 0 rgba(255,255,255,0.07);
+}
+#startBtn:hover {
+    background: linear-gradient(155deg, #1b3268 0%, #274ea0 50%, #1b3268 100%);
+    border-color: rgba(190,215,255,0.68);
+    color: #E0ECFF;
+    box-shadow: 0 0 45px rgba(70,130,240,0.32), inset 0 1px 0 rgba(255,255,255,0.10);
+    transform: scale(1.04);
+}
+
+#controls {
+    margin-top: 26px;
+    color: rgba(155,185,235,0.80);
+    font-size: 13px; text-align: center; line-height: 2.1;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+}
+
+/* ── Language dropdown ──────────────────────────────────────── */
+#langDropdown {
+    position: absolute; top: 18px; right: 20px;
+    z-index: 10; user-select: none;
+}
+
+#langToggle {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(4,10,28,0.88);
+    border: 1.5px solid rgba(110,145,220,0.42);
+    color: #B8CEEC;
+    font-family: Georgia, serif; font-size: 13px; letter-spacing: 1px;
+    padding: 7px 13px; border-radius: 7px; cursor: pointer;
+    transition: all 0.15s;
+}
+#langToggle:hover {
+    border-color: rgba(160,200,255,0.65);
+    color: #D4E6FF;
+    background: rgba(10,20,50,0.92);
+}
+
+.lang-arrow { transition: transform 0.22s ease; flex-shrink: 0; }
+#langDropdown.open .lang-arrow { transform: rotate(180deg); }
+
+#langMenu {
+    display: none;
+    position: absolute; top: calc(100% + 7px); right: 0;
+    background: rgba(5,12,32,0.97);
+    border: 1.5px solid rgba(100,135,215,0.38);
+    border-radius: 9px; overflow: hidden;
+    min-width: 160px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.72), 0 0 20px rgba(20,50,160,0.12);
+    animation: menuFadeIn 0.15s ease;
+}
+@keyframes menuFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0);    }
+}
+#langDropdown.open #langMenu { display: block; }
+
+.lang-option {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 16px;
+    color: rgba(145,175,230,0.82);
+    font-family: Georgia, serif; font-size: 13px;
+    cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.lang-option + .lang-option { border-top: 1px solid rgba(70,100,180,0.18); }
+.lang-option:hover  { background: rgba(40,78,185,0.20); color: #D0E2FF; }
+.lang-option.active { background: rgba(35,70,170,0.16); color: #C8DAFC; }
+.lang-flag {
+    width: 22px !important;
+    height: 16px !important;
+    background-size: cover !important;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+#langFlag {
+    width: 20px !important;
+    height: 14px !important;
+    background-size: cover !important;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+/* ── Global leaderboard on death screen ─────────────────────── */
+.global-lb {
+    margin-top: 22px;
+    width: 280px;
+    font-family: Georgia, serif;
+}
+.glb-title {
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(160,185,230,0.55);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(100,130,200,0.18);
+    padding-bottom: 6px;
+}
+.glb-entry {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: rgba(160,185,230,0.75);
+    padding: 3px 0;
+}
+.glb-entry.glb-me {
+    color: #00FF88;
+    font-weight: bold;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SHIP CUSTOMIZER PANEL
+   ═══════════════════════════════════════════════════════════════ */
+#shipCustomizer {
+    position: fixed; bottom: 20px; right: 20px;
+    background: rgba(4,10,28,0.94);
+    border: 1.5px solid rgba(130,160,220,0.35);
+    border-radius: 10px; padding: 14px 16px;
+    z-index: 200; font-family: Georgia, serif; color: #A0B8D8;
+    min-width: 240px;
+    box-shadow: 0 4px 28px rgba(0,0,0,0.75), 0 0 20px rgba(30,60,160,0.1);
+}
+#shipCustomizer h4 {
+    text-align: center; font-size: 12px; letter-spacing: 3px;
+    margin-bottom: 10px; border-bottom: 1px solid rgba(100,130,200,0.25);
+    padding-bottom: 6px; color: rgba(160,190,240,0.8);
+    text-transform: uppercase;
+}
+#shipPreview {
+    display: block; margin: 0 auto 10px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(120,155,220,0.4);
+    box-shadow: 0 0 14px rgba(40,80,180,0.15);
+}
+.cust-row { margin-bottom: 8px; }
+.cust-label { font-size: 10px; color: rgba(100,130,190,0.7); margin-bottom: 4px; letter-spacing: 2px; text-transform: uppercase; }
+.color-swatches { display: flex; gap: 5px; flex-wrap: wrap; }
+.swatch {
+    width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+    border: 2px solid transparent; transition: transform 0.12s, border-color 0.12s;
+}
+.swatch:hover { transform: scale(1.18); }
+.swatch.selected { border-color: rgba(180,210,255,0.85); transform: scale(1.22); }
+
+.type-buttons { display: flex; gap: 5px; flex-wrap: wrap; }
+.type-btn {
+    padding: 4px 9px;
+    border: 1.5px solid rgba(60,80,140,0.5);
+    border-radius: 4px; cursor: pointer;
+    font-size: 10px; font-family: Georgia, serif;
+    color: rgba(90,115,175,0.8); background: rgba(0,0,0,0.35);
+    letter-spacing: 0.5px; transition: all 0.15s; white-space: nowrap;
+}
+.type-btn:hover { border-color: rgba(130,165,230,0.6); color: rgba(160,195,255,0.9); }
+.type-btn.selected {
+    border-color: rgba(160,195,255,0.75);
+    color: #C8D8F8;
+    background: rgba(40,75,180,0.15);
+}
