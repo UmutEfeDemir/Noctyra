@@ -80,7 +80,11 @@ function _cancelLeaveTimer(id) {
 }
 
 function initSocket() {
-    socket = io(SERVER_URL);
+    socket = io(SERVER_URL, {
+        transports:           ['polling', 'websocket'],
+        reconnectionDelay:    1500,
+        reconnectionAttempts: 15,
+    });
 
     setInterval(() => {
         if (socket && socket.connected) {
@@ -497,6 +501,8 @@ function _showConnectError() {
             </div>
             <input id="nameInput" type="text" maxlength="15"
                    placeholder="${t('namePlaceholder')}" value="${savedName}">
+            <input id="roomCodeInput" type="text" maxlength="4"
+                   placeholder="${t('roomCodePlaceholder')}">
             <button id="startBtn" onclick="startGame()">TEKRAR DENE</button>
         `;
     }
@@ -585,17 +591,19 @@ function loop() {
     // Connecting overlay
     if (gameState === 'connecting') {
         ctx.save();
-        ctx.font      = 'bold 22px Georgia';
         ctx.textAlign = 'center';
-        ctx.fillStyle = _connectError ? '#FF6644' : 'rgba(255,255,255,0.65)';
-        ctx.fillText(
-            _connectError ? '❌ Sunucuya bağlanılamadı' : 'Sunucuya bağlanıyor...',
-            canvas.width / 2, canvas.height / 2
-        );
         if (_connectError) {
-            ctx.font      = '15px Georgia';
-            ctx.fillStyle = 'rgba(255,210,160,0.75)';
-            ctx.fillText('Yeniden bağlanılıyor...', canvas.width / 2, canvas.height / 2 + 32);
+            ctx.font      = 'bold 20px Georgia';
+            ctx.fillStyle = '#FF9966';
+            ctx.fillText('Sunucuya bağlanılamadı — yeniden deneniyor...', canvas.width / 2, canvas.height / 2);
+            ctx.font      = '14px Georgia';
+            ctx.fillStyle = 'rgba(255,210,160,0.65)';
+            ctx.fillText('Railway sunucusu uyanıyor olabilir, lütfen bekleyin (25s)', canvas.width / 2, canvas.height / 2 + 28);
+        } else {
+            const dots = '.'.repeat((Math.floor(frame / 20) % 4));
+            ctx.font      = 'bold 22px Georgia';
+            ctx.fillStyle = 'rgba(255,255,255,0.70)';
+            ctx.fillText('Sunucuya bağlanıyor' + dots, canvas.width / 2, canvas.height / 2);
         }
         ctx.textAlign = 'left';
         ctx.restore();
@@ -697,7 +705,7 @@ function startGame() {
     gameState     = 'connecting';  // → 'playing' after room_joined
     _connectError = false;
     if (_connectTimeout) clearTimeout(_connectTimeout);
-    _connectTimeout = setTimeout(_showConnectError, 8000);
+    _connectTimeout = setTimeout(_showConnectError, 25000);
 
     resetAchievements();
     remotePlayers.clear();

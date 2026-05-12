@@ -14,8 +14,15 @@ const MAX_ROOM_SIZE = 10;
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
+const io     = new Server(server, {
+    cors:         { origin: '*' },
+    allowEIO3:    true,
+    pingTimeout:  20000,
+    pingInterval: 10000,
+    transports:   ['polling', 'websocket'],
+});
 
+app.set('trust proxy', 1);
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
 
