@@ -498,3 +498,42 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     color: #C8D8F8;
     background: rgba(40,75,180,0.15);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE  (≤ 640 px)
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+    /* Make overlay scrollable so customizer can sit below death screen */
+    #overlay {
+        overflow-y: auto;
+        justify-content: flex-start;
+        padding-top: 24px;
+    }
+    .overlay-content {
+        width: 100%;
+        padding: 0 14px 24px;
+        align-items: center;
+    }
+
+    /* When customizer is appended inside overlay on mobile */
+    .overlay-content #shipCustomizer {
+        position: static;
+        margin-top: 16px;
+        min-width: unset;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Tighter inputs on small screens */
+    #nameInput, #roomCodeInput { width: 100%; max-width: 320px; }
+    #startBtn { padding: 13px 32px; letter-spacing: 3px; }
+
+    /* Score HUD smaller on phone */
+    #scoreDisplay { font-size: 20px; }
+
+    /* Room leaderboard: compact */
+    #roomLB { font-size: 11px; min-width: 130px; padding: 6px 9px; }
+
+    /* Boost bar: move up a bit so it doesn't clash with mobile boost button */
+    #boostBar { bottom: 120px; }
+}

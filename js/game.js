@@ -62,7 +62,11 @@ let _currentRoomCode  = '';
 // Delta time — set each frame so all modules can read it as a global
 let _dt           = 1;
 let _lastTs       = 0;
-let _stateEmitAcc = 0;   // accumulator for network state emit (~30/sec regardless of fps)
+let _stateEmitAcc = 0;
+
+// Mobile: emit at 20 Hz instead of 50 Hz to save CPU + bandwidth
+const _isMobile      = navigator.maxTouchPoints > 0 && window.innerWidth <= 768;
+const _EMIT_THRESH   = _isMobile ? 3 : 1.2;
 
 // ── SYSTEMS ───────────────────────────────────────────────────
 let comboCount    = 0;
@@ -102,7 +106,7 @@ function initSocket() {
                 const el = document.getElementById('pingDisplay');
                 if (el) {
                     el.textContent = _ping + ' ms';
-                    el.style.color = _ping < 80 ? '#44FF88' : _ping < 150 ? '#FFD700' : '#FF6644';
+                    el.style.color = _ping < 150 ? '#44FF88' : _ping < 250 ? '#FFD700' : '#FF6644';
                 }
             });
         }
@@ -620,10 +624,10 @@ function loop(ts) {
             if (!boostActive &&  _prevBoosting) stopBoostSound();
             _prevBoosting = boostActive;
 
-            // Send state ~50 times/sec regardless of frame rate (matches server 50 Hz tick)
+            // 50 Hz on desktop, 20 Hz on mobile (saves CPU + bandwidth)
             _stateEmitAcc += _dt;
-            if (_stateEmitAcc >= 1.2 && socket) {
-                _stateEmitAcc -= 1.2;
+            if (_stateEmitAcc >= _EMIT_THRESH && socket) {
+                _stateEmitAcc -= _EMIT_THRESH;
                 socket.emit('state', {
                     x:        Math.round(player.x * 10) / 10,
                     y:        Math.round(player.y * 10) / 10,
@@ -696,12 +700,13 @@ function loop(ts) {
             if (player.score !== gameStats.score) {
                 elScore.textContent = tf('score', { n: player.score });
                 gameStats.score = player.score;
+                updateRoomLB();   // keep both displays in sync on every score change
             }
             gameStats.maxLen = player.maxLen;
         }
         tickAchievements(gameStats);
 
-        if (frame % 60 === 0) updateRoomLB();
+        if (frame % 90 === 0) updateRoomLB();   // periodic refresh for remote player scores
     }
 
     if (gameState === 'spectating' && frame % 60 === 0) updateRoomLB();

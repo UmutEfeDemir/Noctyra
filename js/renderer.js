@@ -23,6 +23,8 @@ function _dayColor() {
     return '#004E6A';
 }
 
+const _isMobile = navigator.maxTouchPoints > 0 && window.innerWidth <= 768;
+
 // Depth gradient is static — recreate only on canvas resize
 let _depthGrad = null, _depthGradW = 0, _depthGradH = 0;
 
@@ -61,22 +63,24 @@ function drawOcean() {
     }
     ctx.stroke();
 
-    // Near wave layer — grid 80px (was 48)
-    const gs2 = 80;
-    const ox2 = (camera.x * 1.15) % gs2;
-    const oy2 = (camera.y * 1.15) % gs2;
-    ctx.strokeStyle = 'rgba(30,140,200,0.14)';
-    ctx.lineWidth   = 1;
-    ctx.beginPath();
-    for (let x = -ox2; x < canvas.width + gs2; x += gs2) {
-        for (let y = -oy2; y < canvas.height + gs2; y += gs2) {
-            const wp = Math.cos((x + camera.x + waveT*32) * 0.016) * 4;
-            const wq = Math.sin((y + camera.y + waveT*22) * 0.018) * 2;
-            ctx.moveTo(x - 10, y + wp + wq);
-            ctx.quadraticCurveTo(x, y + wp + wq + 1.5, x + 10, y + wp + wq);
+    // Near wave layer — skip on mobile to save ~400 bezier calls/frame
+    if (!_isMobile) {
+        const gs2 = 80;
+        const ox2 = (camera.x * 1.15) % gs2;
+        const oy2 = (camera.y * 1.15) % gs2;
+        ctx.strokeStyle = 'rgba(30,140,200,0.14)';
+        ctx.lineWidth   = 1;
+        ctx.beginPath();
+        for (let x = -ox2; x < canvas.width + gs2; x += gs2) {
+            for (let y = -oy2; y < canvas.height + gs2; y += gs2) {
+                const wp = Math.cos((x + camera.x + waveT*32) * 0.016) * 4;
+                const wq = Math.sin((y + camera.y + waveT*22) * 0.018) * 2;
+                ctx.moveTo(x - 10, y + wp + wq);
+                ctx.quadraticCurveTo(x, y + wp + wq + 1.5, x + 10, y + wp + wq);
+            }
         }
+        ctx.stroke();
     }
-    ctx.stroke();
 
     // World border
     ctx.save();

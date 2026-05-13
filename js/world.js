@@ -71,10 +71,11 @@ function spawnChest() {
 
 
 // ── Particle effects ─────────────────────────────────────────
-// Particle stores r,g,b as numbers — no string building per particle per frame.
+const _isMobileWorld = navigator.maxTouchPoints > 0 && window.innerWidth <= 768;
+const _PART_MAX      = _isMobileWorld ? 120 : 350;
 
 function _spawnParticles(x, y, r, g, b, n, sMin, sMax, life, sz) {
-    if (particles.length > 350) return;
+    if (particles.length > _PART_MAX) return;
     for (let i = 0; i < n; i++) {
         const a  = Math.random() * Math.PI * 2;
         const sp = rnd(sMin, sMax);
@@ -102,7 +103,7 @@ function spawnCoinFX(x, y) {
 }
 
 function spawnSteam(ship) {
-    if (particles.length > 350) return;
+    if (particles.length > _PART_MAX) return;
     const ba = ship.angle + Math.PI;
     const sp = rnd(1.5, 4);
     particles.push(new Particle(
@@ -116,7 +117,7 @@ function spawnSteam(ship) {
 
 // Foam/wake bubble spawned at ship's trail head — tiny white-blue drops
 function spawnWakeDrop(ship) {
-    if (particles.length > 380) return;
+    if (particles.length > _PART_MAX) return;
     const ba  = ship.angle + Math.PI;
     const s   = ship.size;
     // Slightly off-center perpendicular spread so bubbles don't all stack

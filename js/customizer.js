@@ -44,8 +44,22 @@ let playerShipConfig = {
 };
 
 // ── Show / hide ───────────────────────────────────────────────
-function showCustomizer() { document.getElementById('shipCustomizer').style.display = 'block'; }
-function hideCustomizer() { document.getElementById('shipCustomizer').style.display = 'none'; }
+function showCustomizer() {
+    const el = document.getElementById('shipCustomizer');
+    el.style.display = 'block';
+    // On narrow screens move the panel inside the overlay so it scrolls with it
+    if (window.innerWidth <= 640) {
+        const oc = document.getElementById('overlayContent');
+        if (oc && el.parentElement !== oc) oc.appendChild(el);
+    }
+}
+
+function hideCustomizer() {
+    const el = document.getElementById('shipCustomizer');
+    el.style.display = 'none';
+    // Move back to body so it's ready for next show()
+    if (el.parentElement !== document.body) document.body.appendChild(el);
+}
 
 // ── Ship type selector ────────────────────────────────────────
 function buildTypeSelector(containerId, options, onSelect) {
