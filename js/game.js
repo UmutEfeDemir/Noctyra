@@ -65,7 +65,7 @@ let _lastTs       = 0;
 let _stateEmitAcc = 0;
 
 // Mobile: emit at 20 Hz instead of 50 Hz to save CPU + bandwidth
-const _isMobile      = navigator.maxTouchPoints > 0 && window.innerWidth <= 768;
+// _isMobile is declared in renderer.js (loads before game.js)
 const _EMIT_THRESH   = _isMobile ? 3 : 1.2;
 
 // ── SYSTEMS ───────────────────────────────────────────────────
