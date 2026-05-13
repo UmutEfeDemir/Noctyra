@@ -126,7 +126,7 @@ body { background: #040a14; overflow: hidden; cursor: default; }
 /* ── Mobile boost button ────────────────────────────────────── */
 #mobileBoostBtn {
     display: none;
-    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: 28px; right: 24px;
     width: 84px; height: 84px;
     border-radius: 50%;
     background: rgba(255,160,0,0.18);
@@ -142,6 +142,32 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     transition: background 0.08s;
 }
 #mobileBoostBtn:active { background: rgba(255,160,0,0.42); }
+
+/* ── Virtual joystick ────────────────────────────────────────── */
+#joystick {
+    display: none;
+    position: fixed; bottom: 28px; left: 20px;
+    width: 110px; height: 110px;
+    z-index: 15;
+    touch-action: none;
+    pointer-events: auto;
+}
+#joystickRing {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 2.5px solid rgba(200,225,255,0.28);
+    box-shadow: 0 0 24px rgba(80,130,255,0.10), inset 0 0 18px rgba(0,15,70,0.18);
+}
+#joystickKnob {
+    position: absolute; top: 50%; left: 50%;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 36%, rgba(180,215,255,0.55), rgba(60,100,210,0.22));
+    border: 2px solid rgba(155,205,255,0.50);
+    box-shadow: 0 2px 14px rgba(70,130,255,0.20);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
 
 /* ── In-game room leaderboard ───────────────────────────────── */
 #roomLB {
@@ -499,31 +525,18 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     background: rgba(40,75,180,0.15);
 }
 
+/* ── Mobile customizer toggle button (hidden on desktop) ──── */
+#custToggleBtn {
+    display: none;
+}
+#custBackdrop {
+    display: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    MOBILE  (≤ 640 px)
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
-    /* Make overlay scrollable so customizer can sit below death screen */
-    #overlay {
-        overflow-y: auto;
-        justify-content: flex-start;
-        padding-top: 24px;
-    }
-    .overlay-content {
-        width: 100%;
-        padding: 0 14px 24px;
-        align-items: center;
-    }
-
-    /* When customizer is appended inside overlay on mobile */
-    .overlay-content #shipCustomizer {
-        position: static;
-        margin-top: 16px;
-        min-width: unset;
-        width: 100%;
-        box-sizing: border-box;
-    }
-
     /* Tighter inputs on small screens */
     #nameInput, #roomCodeInput { width: 100%; max-width: 320px; }
     #startBtn { padding: 13px 32px; letter-spacing: 3px; }
@@ -534,6 +547,110 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     /* Room leaderboard: compact */
     #roomLB { font-size: 11px; min-width: 130px; padding: 6px 9px; }
 
-    /* Boost bar: move up a bit so it doesn't clash with mobile boost button */
-    #boostBar { bottom: 120px; }
+    /* Boost bar: move up so it doesn't overlap joystick or boost button */
+    #boostBar { bottom: 130px; left: 140px; }
+
+    /* ── Backdrop ── */
+    #custBackdrop {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 290;
+        display: none;
+    }
+    #custBackdrop.cust-open { display: block; }
+
+    /* ── Toggle button ── */
+    #custToggleBtn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        position: fixed;
+        bottom: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 295;
+        background: rgba(4,10,28,0.92);
+        border: 1.5px solid rgba(130,160,220,0.45);
+        border-radius: 28px;
+        padding: 8px 18px 8px 10px;
+        color: #A0B8D8;
+        font-family: Georgia, serif;
+        font-size: 12px;
+        letter-spacing: 1.5px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.55);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    #custToggleBtn:active { background: rgba(20,40,90,0.95); }
+    #custThumb {
+        border-radius: 50%;
+        border: 1px solid rgba(120,155,220,0.5);
+        flex-shrink: 0;
+    }
+    #custArrow {
+        font-size: 10px;
+        opacity: 0.7;
+        transition: transform 0.25s;
+    }
+    #custToggleBtn.cust-open #custArrow { transform: rotate(180deg); }
+
+    /* ── Bottom sheet ── */
+    #shipCustomizer {
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        top: auto;
+        max-height: 72vh;
+        overflow-y: auto;
+        border-radius: 18px 18px 0 0;
+        min-width: unset;
+        transform: translateY(105%);
+        transition: transform 0.32s cubic-bezier(0.32,0.72,0,1);
+        z-index: 300;
+        padding-bottom: 28px;  /* safe area breathing room */
+    }
+    #shipCustomizer.cust-open {
+        transform: translateY(0);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LANDSCAPE MOBILE  (phone rotated, height ≤ 500 px)
+   ═══════════════════════════════════════════════════════════════ */
+@media (orientation: landscape) and (max-height: 500px) {
+    /* HUD — compact */
+    #hud { top: 8px; left: 10px; }
+    #scoreDisplay { font-size: 18px; }
+    #nameDisplay  { font-size: 13px; }
+    #highScoreHUD, #roomInfo, #pingDisplay { font-size: 10px; }
+
+    /* Leaderboard — tighter */
+    #roomLB { top: 8px; right: 8px; font-size: 10px; padding: 5px 8px; min-width: 110px; }
+
+    /* Minimap — smaller, stay bottom-right */
+    #minimap { width: 110px; height: 110px; bottom: 8px; right: 8px; }
+
+    /* Boost bar — tucked above the joystick area */
+    #boostBar { bottom: auto; top: 8px; left: 50%; transform: translateX(-50%); }
+    #boostBg  { width: 120px; }
+    #boostLabel { font-size: 11px; }
+
+    /* Joystick — smaller in landscape */
+    #joystick { bottom: 12px; left: 12px; width: 96px; height: 96px; }
+    #joystickKnob { width: 40px; height: 40px; }
+
+    /* Boost button — smaller in landscape */
+    #mobileBoostBtn { bottom: 12px; right: 12px; width: 72px; height: 72px; font-size: 11px; }
+
+    /* Volume button — above minimap */
+    #volBtn { bottom: 126px; right: 8px; }
+
+    /* Combo display — smaller */
+    #comboDisplay { font-size: 22px; }
+
+    /* Achievement toast — higher */
+    #achToast { bottom: 100px; }
+
+    /* Customizer toggle — top-left, above HUD */
+    #custToggleBtn { bottom: auto; top: 8px; left: 50%; transform: translateX(-50%); }
 }

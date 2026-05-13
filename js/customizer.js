@@ -43,22 +43,69 @@ let playerShipConfig = {
     wake:     WAKE_OPTIONS[0].wake,
 };
 
-// ── Show / hide ───────────────────────────────────────────────
+// ── Show / hide / toggle ──────────────────────────────────────
+const _custIsMobile = () => window.innerWidth <= 640;
+
 function showCustomizer() {
-    const el = document.getElementById('shipCustomizer');
-    el.style.display = 'block';
-    // On narrow screens move the panel inside the overlay so it scrolls with it
-    if (window.innerWidth <= 640) {
-        const oc = document.getElementById('overlayContent');
-        if (oc && el.parentElement !== oc) oc.appendChild(el);
+    if (_custIsMobile()) {
+        // Mobile: only show toggle button — panel stays closed until tapped
+        document.getElementById('custToggleBtn').style.display = 'flex';
+        _syncThumb();
+    } else {
+        document.getElementById('shipCustomizer').style.display = 'block';
     }
 }
 
 function hideCustomizer() {
-    const el = document.getElementById('shipCustomizer');
-    el.style.display = 'none';
-    // Move back to body so it's ready for next show()
-    if (el.parentElement !== document.body) document.body.appendChild(el);
+    _closeCustPanel();
+    if (_custIsMobile()) {
+        document.getElementById('custToggleBtn').style.display = 'none';
+    } else {
+        document.getElementById('shipCustomizer').style.display = 'none';
+    }
+}
+
+function toggleCustomizer() {
+    const panel = document.getElementById('shipCustomizer');
+    const btn   = document.getElementById('custToggleBtn');
+    const bd    = document.getElementById('custBackdrop');
+    if (panel.classList.contains('cust-open')) {
+        _closeCustPanel();
+    } else {
+        panel.style.display = 'block';
+        requestAnimationFrame(() => {
+            panel.classList.add('cust-open');
+            btn.classList.add('cust-open');
+            bd.classList.add('cust-open');
+        });
+    }
+}
+
+function _closeCustPanel() {
+    document.getElementById('shipCustomizer').classList.remove('cust-open');
+    document.getElementById('custToggleBtn').classList.remove('cust-open');
+    document.getElementById('custBackdrop').classList.remove('cust-open');
+}
+
+// Mini ship preview inside the toggle button
+function _syncThumb() {
+    const tc = document.getElementById('custThumb');
+    if (!tc) return;
+    const pc = tc.getContext('2d');
+    const w = tc.width, h = tc.height, cx = w/2, cy = h/2;
+    pc.clearRect(0, 0, w, h);
+    pc.save();
+    pc.beginPath(); pc.arc(cx, cy, cx-1, 0, Math.PI*2); pc.clip();
+    pc.fillStyle = '#003E5C'; pc.fillRect(0, 0, w, h);
+    const c = playerShipConfig, type = c.shipType;
+    const s = type === 'savas' ? 7 : type === 'sandal' ? 6 : 8;
+    pc.translate(cx, cy - 2);
+    if      (type === 'sandal') _previewSandal(pc, s, c);
+    else if (type === 'savas')  _previewSavas(pc, s, c);
+    else                         _previewGemi(pc, s, c);
+    pc.restore();
+    pc.beginPath(); pc.arc(cx, cy, cx-1, 0, Math.PI*2);
+    pc.strokeStyle = '#8B6914'; pc.lineWidth = 1.5; pc.stroke();
 }
 
 // ── Ship type selector ────────────────────────────────────────
@@ -180,6 +227,9 @@ function drawShipPreview() {
     pc.strokeStyle = '#8B6914';
     pc.lineWidth   = 2;
     pc.stroke();
+
+    // Keep the toggle button thumb in sync
+    if (_custIsMobile()) _syncThumb();
 }
 
 function _previewSandal(pc, s, c) {

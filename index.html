@@ -51,6 +51,12 @@
 <!-- Mobile boost button (touch devices only) -->
 <button id="mobileBoostBtn">💨<br>BOOST</button>
 
+<!-- Virtual joystick (mobile only, shown during gameplay) -->
+<div id="joystick">
+    <div id="joystickRing"></div>
+    <div id="joystickKnob"></div>
+</div>
+
 <!-- Menu / Death overlay -->
 <div id="overlay">
     <div id="sparkleLayer"></div>
@@ -98,6 +104,14 @@
         </div>
     </div>
 </div>
+
+<!-- Mobile customizer backdrop + toggle button -->
+<div id="custBackdrop" onclick="toggleCustomizer()"></div>
+<button id="custToggleBtn" onclick="toggleCustomizer()">
+    <canvas id="custThumb" width="36" height="36"></canvas>
+    <span id="custToggleLabel">GEMİ ÖZELLEŞTIR</span>
+    <span id="custArrow">▲</span>
+</button>
 
 <!-- Ship Customizer Panel -->
 <div id="shipCustomizer">

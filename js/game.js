@@ -534,9 +534,12 @@ function showKillMsg(txt) {
 }
 
 function _setMobileBoost(visible) {
+    const isTouch = navigator.maxTouchPoints > 0;
     const btn = document.getElementById('mobileBoostBtn');
-    if (!btn) return;
-    btn.style.display = (visible && navigator.maxTouchPoints > 0) ? 'flex' : 'none';
+    const joy = document.getElementById('joystick');
+    if (btn) btn.style.display = (visible && isTouch) ? 'flex' : 'none';
+    if (joy) joy.style.display = (visible && isTouch) ? 'block' : 'none';
+    if (!visible) { _joy.active = false; _joy.dx = 0; _joy.dy = 0; }
 }
 
 function _showConnectError() {
@@ -619,6 +622,13 @@ function loop(ts) {
 
     if (gameState === 'playing' || gameState === 'connecting') {
         if (player && player.alive) {
+            // Joystick steering: override mouse direction when joystick is active
+            if (_joy.active && (_joy.dx * _joy.dx + _joy.dy * _joy.dy) > 36) {
+                const sx = player.x - camera.x;
+                const sy = player.y - camera.y;
+                mouse.x  = sx + _joy.dx * 9999;
+                mouse.y  = sy + _joy.dy * 9999;
+            }
             player.update();
             if (boostActive  && !_prevBoosting) startBoostSound();
             if (!boostActive &&  _prevBoosting) stopBoostSound();
@@ -862,6 +872,51 @@ if (_mbb) {
     _mbb.addEventListener('touchend',   e => { e.preventDefault(); boostActive = false; }, { passive: false });
     _mbb.addEventListener('touchcancel',e => { e.preventDefault(); boostActive = false; }, { passive: false });
 }
+
+// ── VIRTUAL JOYSTICK ──────────────────────────────────────────
+const _joy     = { active: false, id: null, cx: 0, cy: 0, dx: 0, dy: 0 };
+const _JOY_R   = 44;
+const _joyEl   = document.getElementById('joystick');
+const _joyKnob = document.getElementById('joystickKnob');
+
+function _joyApply(t) {
+    let dx = t.clientX - _joy.cx, dy = t.clientY - _joy.cy;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > _JOY_R) { dx = dx / len * _JOY_R; dy = dy / len * _JOY_R; }
+    _joy.dx = dx; _joy.dy = dy;
+    if (_joyKnob) _joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+if (_joyEl) {
+    _joyEl.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (_joy.active) return;
+        const t     = e.changedTouches[0];
+        _joy.active = true; _joy.id = t.identifier;
+        _joy.cx     = t.clientX; _joy.cy = t.clientY;
+        _joy.dx     = 0;   _joy.dy = 0;
+        if (_joyKnob) _joyKnob.style.transform = 'translate(-50%, -50%)';
+    }, { passive: false });
+}
+
+window.addEventListener('touchmove', e => {
+    if (!_joy.active) return;
+    for (const t of e.changedTouches) {
+        if (t.identifier === _joy.id) { _joyApply(t); break; }
+    }
+}, { passive: true });
+
+function _joyRelease(e) {
+    for (const t of e.changedTouches) {
+        if (_joy.active && t.identifier === _joy.id) {
+            _joy.active = false; _joy.id = null; _joy.dx = 0; _joy.dy = 0;
+            if (_joyKnob) _joyKnob.style.transform = 'translate(-50%, -50%)';
+            break;
+        }
+    }
+}
+window.addEventListener('touchend',    _joyRelease, { passive: true });
+window.addEventListener('touchcancel', _joyRelease, { passive: true });
 
 // ── MENU BACKGROUND ANIMATION ────────────────────────────────
 const _menuShips = [
