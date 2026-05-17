@@ -139,15 +139,25 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     user-select: none; -webkit-user-select: none;
     align-items: center; justify-content: center; flex-direction: column;
     box-shadow: 0 0 18px rgba(255,140,0,0.18);
-    transition: background 0.08s;
+    transition: background 0.08s, box-shadow 0.12s;
 }
-#mobileBoostBtn:active { background: rgba(255,160,0,0.42); }
+#mobileBoostBtn:active,
+#mobileBoostBtn.boosting {
+    background: rgba(255,160,0,0.42);
+    box-shadow: 0 0 32px rgba(255,120,0,0.70), 0 0 14px rgba(255,160,0,0.45);
+    animation: boostPulse 0.6s ease-in-out infinite;
+}
+@keyframes boostPulse {
+    0%   { transform: scale(1.0); }
+    50%  { transform: scale(1.05); }
+    100% { transform: scale(1.0); }
+}
 
 /* ── Virtual joystick ────────────────────────────────────────── */
 #joystick {
     display: none;
     position: fixed; bottom: 28px; left: 20px;
-    width: 110px; height: 110px;
+    width: 120px; height: 120px;
     z-index: 15;
     touch-action: none;
     pointer-events: auto;
@@ -160,7 +170,7 @@ body { background: #040a14; overflow: hidden; cursor: default; }
 }
 #joystickKnob {
     position: absolute; top: 50%; left: 50%;
-    width: 46px; height: 46px;
+    width: 52px; height: 52px;
     border-radius: 50%;
     background: radial-gradient(circle at 38% 36%, rgba(180,215,255,0.55), rgba(60,100,210,0.22));
     border: 2px solid rgba(155,205,255,0.50);
@@ -541,11 +551,25 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     #nameInput, #roomCodeInput { width: 100%; max-width: 320px; }
     #startBtn { padding: 13px 32px; letter-spacing: 3px; }
 
-    /* Score HUD smaller on phone */
+    /* HUD — pushed in from edges so joystick doesn't overlap */
+    #hud { top: 14px; left: 14px; }
     #scoreDisplay { font-size: 20px; }
 
     /* Room leaderboard: compact */
     #roomLB { font-size: 11px; min-width: 130px; padding: 6px 9px; }
+
+    /* Achievement toast — full width safe on narrow screens */
+    #achToast {
+        max-width: calc(100% - 32px);
+        padding: 10px 16px;
+    }
+    .ach-name  { font-size: 12px; }
+
+    /* Swatches — bigger hit targets on touch */
+    .swatch { width: 28px; height: 28px; }
+
+    /* Type buttons — more thumb-friendly */
+    .type-btn { padding: 8px 12px; font-size: 11px; }
 
     /* Minimap — 90×90, sits above boost button (boost:28+84+8=120) */
     #minimap { width: 90px; height: 90px; bottom: 120px; right: 20px; }
@@ -561,6 +585,8 @@ body { background: #040a14; overflow: hidden; cursor: default; }
     #custBackdrop {
         position: fixed; inset: 0;
         background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
         z-index: 290;
         display: none;
     }
@@ -614,7 +640,19 @@ body { background: #040a14; overflow: hidden; cursor: default; }
         transform: translateY(105%);
         transition: transform 0.32s cubic-bezier(0.32,0.72,0,1);
         z-index: 300;
-        padding-bottom: 28px;  /* safe area breathing room */
+        padding-top: 22px;
+        padding-bottom: max(28px, env(safe-area-inset-bottom));
+    }
+    /* Drag handle */
+    #shipCustomizer::before {
+        content: '';
+        display: block;
+        position: absolute;
+        top: 10px; left: 50%;
+        transform: translateX(-50%);
+        width: 42px; height: 4px;
+        border-radius: 2px;
+        background: rgba(140,160,220,0.40);
     }
     #shipCustomizer.cust-open {
         transform: translateY(0);

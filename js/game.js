@@ -909,9 +909,9 @@ canvas.addEventListener('touchend', e => {
 // Boost button — separate from canvas so one finger steers, other boosts
 const _mbb = document.getElementById('mobileBoostBtn');
 if (_mbb) {
-    _mbb.addEventListener('touchstart', e => { e.preventDefault(); boostActive = true;  }, { passive: false });
-    _mbb.addEventListener('touchend',   e => { e.preventDefault(); boostActive = false; }, { passive: false });
-    _mbb.addEventListener('touchcancel',e => { e.preventDefault(); boostActive = false; }, { passive: false });
+    _mbb.addEventListener('touchstart', e => { e.preventDefault(); boostActive = true;  _mbb.classList.add('boosting');    }, { passive: false });
+    _mbb.addEventListener('touchend',   e => { e.preventDefault(); boostActive = false; _mbb.classList.remove('boosting'); }, { passive: false });
+    _mbb.addEventListener('touchcancel',e => { e.preventDefault(); boostActive = false; _mbb.classList.remove('boosting'); }, { passive: false });
 }
 
 // ── VIRTUAL JOYSTICK ──────────────────────────────────────────

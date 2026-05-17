@@ -81,58 +81,101 @@ app.get('/health', (_req, res) => {
 // ── Bot system ────────────────────────────────────────────────
 const BOUNTY_SCORE = 300;
 const MAX_BOTS     = 3;
-const BOT_SPEED    = 1.45;
-const BOT_TURN     = 0.033;
+const BOT_SPEED    = 1.65;
+const BOT_TURN     = 0.052;
+const BOT_CHASE_R  = 480;   // px — chase real players within this radius
 const BOT_NAMES    = [
-    'Kara Pete','Gemi Avcısı','Deniz Kurdu','Sis Adamı',
-    'Demir Kaptan','Lanet Korsan','Karanlık Gemi','Paslanmış Çapa',
-    'Köpek Balığı','Batan Yıldız',
+    // Türkçe oyuncu tarzı isimler — gerçek oyuncudan ayırt edilemez
+    'xKaptanx','Reis07','DenizKurdu','SisliSular','KaraFırtına',
+    'UçanBal1k','ŞimşekGemi','AteşliKorsan','GizliReis','KanlıDalga',
+    'FırtınaKuşu','KaraDelik','DemirYumruk','YıldırımGemi','BuzKorsan',
+    'ZehirliOk','AlteınÇapa','KaplanDeniz','GüçlüSavaşçı','HızlıGemi',
+    'KükreyenDalga','EfsaneSavaşçı','KorkusuzKaptan','SesSizÖlüm','KaraYılan',
+    'AslanKorsan','VolkanDeniz','GizliHançer','UçurumKaplan','GökGürültüsü',
+    'CehennemiKorsan','BoğaGücü','YakıcıAlev','DemirKalkan','SoğukkanlıReis',
+    'SavaşKuşu','GüçKorsan','AteşTopu','YıldızAvcısı','KaraKuş',
+    'SerbestDeniz','TaşKalp','ŞahinKaptan','BüyükBalık','FırtınaAteşi',
+    'GizliAğ','HızBölgesi','DalganınSesi','KorkuYayan','EfsanelKorsan',
 ];
 const BOT_CONFIGS  = [
     { hull:'#1C1C2E', sail:'#555580', accent:'#FF4466', wake:'255,68,102'   },
     { hull:'#1a3a5c', sail:'#2a5a8c', accent:'#00EEFF', wake:'0,238,255'   },
     { hull:'#3D0060', sail:'#7A10A0', accent:'#EE44EE', wake:'238,68,238'  },
     { hull:'#111111', sail:'#333333', accent:'#FFD700', wake:'255,215,0'   },
+    { hull:'#1a2a10', sail:'#3a6020', accent:'#88FF44', wake:'136,255,68'  },
+    { hull:'#3a1010', sail:'#802020', accent:'#FF8800', wake:'255,136,0'   },
 ];
 const BOT_TYPES    = ['sandal','gemi','gemi','savas'];
 
-function _makeBotData() {
+function _uniqueBotName(room) {
+    const used = new Set([...room.players.values()].map(p => p.name));
+    const avail = BOT_NAMES.filter(n => !used.has(n));
+    const pool  = avail.length > 0 ? avail : BOT_NAMES;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function _makeBotData(room) {
     const id  = 'BOT_' + Math.random().toString(36).slice(2, 9).toUpperCase();
     const cfg = BOT_CONFIGS[Math.floor(Math.random() * BOT_CONFIGS.length)];
+    const sz  = 14 + Math.floor(Math.random() * 6);   // bots start slightly bigger
     return {
         id, isBot: true,
-        name:     BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)],
+        name:     _uniqueBotName(room),
         config:   cfg,
         shipType: BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)],
         x: 400 + Math.random() * 4200,
         y: 400 + Math.random() * 4200,
         angle:    Math.random() * Math.PI * 2,
-        size: 13, score: 0, maxLen: 55, kills: 0,
+        size: sz, score: Math.floor(Math.random() * 40), maxLen: 55 + sz * 2, kills: 0,
         boosting: false, _dirty: true,
         _wpX: 2500, _wpY: 2500,
+        _boostTick: 0,
     };
 }
 
-function _updateBotAI(bot) {
-    const dx = bot._wpX - bot.x, dy = bot._wpY - bot.y;
-    if (dx * dx + dy * dy < 90 * 90) {
-        bot._wpX = 300 + Math.random() * 4400;
-        bot._wpY = 300 + Math.random() * 4400;
+function _updateBotAI(bot, room) {
+    // Chase nearest real player if close enough, else wander to waypoint
+    let tx = bot._wpX, ty = bot._wpY;
+    let chasing = false;
+    let bestD2 = BOT_CHASE_R * BOT_CHASE_R;
+    for (const pd of room.players.values()) {
+        if (pd.isBot || pd.id === bot.id) continue;
+        const dx2 = pd.x - bot.x, dy2 = pd.y - bot.y;
+        const d2  = dx2 * dx2 + dy2 * dy2;
+        if (d2 < bestD2) { bestD2 = d2; tx = pd.x; ty = pd.y; chasing = true; }
     }
-    const ta = Math.atan2(bot._wpY - bot.y, bot._wpX - bot.x);
+
+    // Refresh waypoint when reached
+    if (!chasing) {
+        const dx = bot._wpX - bot.x, dy = bot._wpY - bot.y;
+        if (dx * dx + dy * dy < 100 * 100) {
+            bot._wpX = 300 + Math.random() * 4400;
+            bot._wpY = 300 + Math.random() * 4400;
+            tx = bot._wpX; ty = bot._wpY;
+        }
+    }
+
+    const ta = Math.atan2(ty - bot.y, tx - bot.x);
     let da = ta - bot.angle;
     while (da >  Math.PI) da -= 2 * Math.PI;
     while (da < -Math.PI) da += 2 * Math.PI;
     bot.angle += Math.sign(da) * Math.min(Math.abs(da), BOT_TURN);
-    bot.x = Math.max(80, Math.min(4920, bot.x + Math.cos(bot.angle) * BOT_SPEED));
-    bot.y = Math.max(80, Math.min(4920, bot.y + Math.sin(bot.angle) * BOT_SPEED));
+
+    // Occasional boost when chasing
+    bot._boostTick = (bot._boostTick || 0) + 1;
+    const boosting = chasing && bot._boostTick % 60 < 20;
+    const spd = boosting ? BOT_SPEED * 1.5 : BOT_SPEED;
+    bot.boosting = boosting;
+
+    bot.x = Math.max(80, Math.min(4920, bot.x + Math.cos(bot.angle) * spd));
+    bot.y = Math.max(80, Math.min(4920, bot.y + Math.sin(bot.angle) * spd));
     bot._dirty = true;
 }
 
 function _spawnBot(roomId) {
     const room = rooms.get(roomId);
     if (!room) return;
-    const bot = _makeBotData();
+    const bot = _makeBotData(room);
     room.players.set(bot.id, bot);
     io.to(roomId).emit('player_join', bot);
 }
@@ -192,7 +235,7 @@ function _startTick(roomId) {
         if (!r) { clearInterval(room._tick); return; }
         const batch = [];
         for (const pd of r.players.values()) {
-            if (pd.isBot) _updateBotAI(pd);
+            if (pd.isBot) _updateBotAI(pd, r);
             if (pd._dirty) {
                 batch.push({
                     id: pd.id, x: pd.x, y: pd.y,
@@ -231,10 +274,10 @@ function findRoom() {
     return code;
 }
 
-// Sweep zombie rooms (0 players) every 5 minutes
+// Sweep zombie rooms (0 real players) every 5 minutes
 setInterval(() => {
     for (const [id, room] of rooms) {
-        if (room.players.size === 0) _deleteRoom(id);
+        if (_realCount(room) === 0) _deleteRoom(id);
     }
 }, 5 * 60 * 1000);
 
@@ -265,7 +308,8 @@ io.on('connection', socket => {
 
         // Leave previous room cleanly
         if (roomId) {
-            const old = rooms.get(roomId);
+            const old    = rooms.get(roomId);
+            const oldRId = roomId;
             if (old) {
                 // Only broadcast player_leave if the player was still in the room.
                 // If killed by another player, player_die was already sent and the
@@ -273,9 +317,14 @@ io.on('connection', socket => {
                 // on clients and can delete the freshly-respawned remote player.
                 const wasPresent = old.players.has(socket.id);
                 old.players.delete(socket.id);
-                if (wasPresent) socket.to(roomId).emit('player_leave', { id: socket.id });
-                if (old.players.size === 0) _deleteRoom(roomId);
-                else io.to(roomId).emit('room_info', { count: old.players.size, max: MAX_ROOM_SIZE });
+                if (wasPresent) socket.to(oldRId).emit('player_leave', { id: socket.id });
+                const realOld = _realCount(old);
+                if (realOld === 0) {
+                    _deleteRoom(oldRId);
+                } else {
+                    io.to(oldRId).emit('room_info', { count: realOld, max: MAX_ROOM_SIZE });
+                    setTimeout(() => _maintainBots(oldRId), 1500);
+                }
             }
             socket.leave(roomId);
         }
@@ -360,7 +409,13 @@ io.on('connection', socket => {
         dbSaveScore(pd.name, pd.score || 0, pd.kills || 0).catch(() => {});
         room.players.delete(socket.id);
         socket.to(roomId).emit('player_die', { id: socket.id, killedBy, droppedCoins: droppedCoins || [] });
-        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
+        const realAfterDie = _realCount(room);
+        io.to(roomId).emit('room_info', { count: realAfterDie, max: MAX_ROOM_SIZE });
+        if (realAfterDie === 0) {
+            _deleteRoom(roomId);
+        } else {
+            setTimeout(() => _maintainBots(roomId), 2000);
+        }
         console.log(`[DIE] ${pd.name} killed by ${killedBy || 'island'}`);
     });
 
