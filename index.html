@@ -49,7 +49,7 @@
 <div id="killMsg"></div>
 
 <!-- Mobile boost button (touch devices only) -->
-<button id="mobileBoostBtn">💨<br>BOOST</button>
+<button id="mobileBoostBtn"><span class="boost-icon">⛵</span><span class="boost-label">BOOST</span></button>
 
 <!-- Virtual joystick (mobile only, shown during gameplay) -->
 <div id="joystick">
@@ -122,27 +122,46 @@
                     </div>
                 </div>
 
-                <button id="startBtn" onclick="startGame()" data-i18n="startBtn">YELKEN AÇ</button>
+                <button id="startBtn" onclick="startGame()"><span class="start-icon">⛵</span><span data-i18n="startBtn">YELKEN AÇ</span></button>
                 <div id="controls" data-i18n-html="controls">
                     Fare ile yön ver &nbsp;|&nbsp; Sol tık veya BOŞLUK: Hızlan<br>
                     Düşman gemisini bedenine çarparak batır!<br>
                     Doubloon ve sandıklar topla, gemini büyüt!
                 </div>
+
+                <!-- Mobile ship card — tıklayınca bottom sheet açılır -->
+                <div id="mobileShipCard" onclick="toggleCustomizer()">
+                    <canvas id="mobileShipThumb" width="80" height="80"></canvas>
+                    <div class="mob-card-info">
+                        <div class="mob-card-label">GEMİN</div>
+                        <div class="mob-card-type" id="mobShipType">BRİG</div>
+                    </div>
+                    <div class="mob-card-edit">DÜZENLE <span>›</span></div>
+                </div>
             </div>
         </div>
 
-        <!-- RIGHT: Ship customizer -->
+        <!-- RIGHT: Ship customizer (desktop) -->
         <div class="menu-right">
             <div id="shipCustomizer">
+                <!-- Mobil başlık (bottom sheet'te görünür) -->
+                <div class="cust-mobile-title">GEMİ ÖZELLEŞTİR</div>
+
+                <!-- Masaüstü başlık -->
                 <div class="cust-ship-header">
                     <span data-i18n="yourShip">SENİN GEMİN</span>
                     <span class="cust-ship-name" id="custShipName"></span>
                 </div>
-                <canvas id="shipPreview" width="160" height="160"></canvas>
-                <div class="cust-row">
-                    <div class="cust-label" data-i18n="shipType">GEMİ TÜRÜ</div>
-                    <div id="typeButtons" class="type-buttons"></div>
+
+                <!-- Önizleme + gemi türü (mobilde yan yana) -->
+                <div class="cust-top-section">
+                    <canvas id="shipPreview" width="160" height="160"></canvas>
+                    <div class="cust-top-right">
+                        <div class="cust-label" data-i18n="shipType">GEMİ TÜRÜ</div>
+                        <div id="typeButtons" class="type-buttons"></div>
+                    </div>
                 </div>
+
                 <div class="cust-row">
                     <div class="cust-label" data-i18n="hull">TEKNE</div>
                     <div class="color-swatches" id="hullSwatches"></div>
@@ -155,7 +174,7 @@
                     <div class="cust-label" data-i18n="accent">AKSAN</div>
                     <div class="color-swatches" id="accentSwatches"></div>
                 </div>
-                <div class="cust-row">
+                <div class="cust-row cust-row-wake">
                     <div class="cust-label" data-i18n="wake">İZ RENGİ</div>
                     <div class="color-swatches" id="wakeSwatches"></div>
                 </div>
@@ -169,6 +188,9 @@
                         <div class="stat-val" id="statTotalKills">0</div>
                     </div>
                 </div>
+
+                <!-- Mobil kaydet butonu -->
+                <button class="cust-save-btn" onclick="_closeCustPanel()">KAYDET</button>
             </div>
         </div>
 
@@ -176,7 +198,7 @@
 </div>
 
 <!-- Kept in DOM (hidden) — customizer.js references these elements -->
-<div id="custBackdrop" style="display:none!important"></div>
+<div id="custBackdrop"></div>
 <button id="custToggleBtn" style="display:none!important">
     <canvas id="custThumb" width="36" height="36"></canvas>
 </button>

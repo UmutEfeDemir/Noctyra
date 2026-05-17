@@ -81,9 +81,10 @@ app.get('/health', (_req, res) => {
 // ── Bot system ────────────────────────────────────────────────
 const BOUNTY_SCORE    = 300;
 const BOT_FILL_TARGET = 6;   // oda bu kadar toplam oyuncuya (gerçek + bot) kadar dolar
-const BOT_SPEED       = 1.65;
-const BOT_TURN     = 0.052;
-const BOT_CHASE_R  = 480;   // px — chase real players within this radius
+const BOT_SPEED       = 1.72; // oyuncudan biraz hızlı (BASE_SPEED=1.6)
+const BOT_BOOST_SPEED = 2.8;  // boost anı (BOOST_SPEED=3.0)
+const BOT_TURN        = 0.068; // çevik (BOOST_TURN=0.065)
+const BOT_CHASE_R     = 700;  // geniş algı yarıçapı
 const BOT_NAMES = ['Elif','MrAtalay','Crashnn','Echo','Noir','Lycidas','Napolyon','Nico'];
 const BOT_CONFIGS  = [
     { hull:'#1C1C2E', sail:'#555580', accent:'#FF4466', wake:'255,68,102'   },
@@ -122,20 +123,47 @@ function _makeBotData(room) {
 }
 
 function _updateBotAI(bot, room) {
-    // Chase nearest real player if close enough, else wander to waypoint
-    let tx = bot._wpX, ty = bot._wpY;
-    let chasing = false;
+    bot._boostTick = (bot._boostTick || 0) + 1;
+
+    // ── En yakın gerçek oyuncuyu bul ──────────────────────────
+    let target = null;
     let bestD2 = BOT_CHASE_R * BOT_CHASE_R;
     for (const pd of room.players.values()) {
-        if (pd.isBot || pd.id === bot.id) continue;
-        const dx2 = pd.x - bot.x, dy2 = pd.y - bot.y;
-        const d2  = dx2 * dx2 + dy2 * dy2;
-        if (d2 < bestD2) { bestD2 = d2; tx = pd.x; ty = pd.y; chasing = true; }
+        if (pd.isBot) continue;
+        const dx = pd.x - bot.x, dy = pd.y - bot.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; target = pd; }
     }
 
-    // Refresh waypoint when reached
-    if (!chasing) {
-        const dx = bot._wpX - bot.x, dy = bot._wpY - bot.y;
+    let tx, ty, boosting = false;
+
+    if (target) {
+        const dist = Math.sqrt(bestD2);
+
+        if (dist < 150) {
+            // ── ORBIT: hedefin çevresinde dönerek trail'ini kes ──
+            // Hedefin sağına ya da soluna çıkmaya çalış
+            bot._orbitSide = bot._orbitSide || (Math.random() < 0.5 ? 1 : -1);
+            const perpAngle = target.angle + (Math.PI / 2) * bot._orbitSide;
+            tx = target.x + Math.cos(perpAngle) * 120;
+            ty = target.y + Math.sin(perpAngle) * 120;
+            // Çok yaklaşınca taraf değiştir
+            if (bot._boostTick % 120 === 0) bot._orbitSide *= -1;
+            boosting = bot._boostTick % 40 < 18; // orbit'te sıkça boost
+        } else {
+            // ── INTERCEPT: hedefin ilerisini tahmin et ───────────
+            // Mesafeye göre lead miktarı — uzaktayken daha az öne bak
+            const lead = Math.min(dist * 0.45, 220);
+            tx = target.x + Math.cos(target.angle) * lead;
+            ty = target.y + Math.sin(target.angle) * lead;
+            // 300px içindeyken agresif boost
+            boosting = dist < 320 && bot._boostTick % 50 < 22;
+        }
+    } else {
+        // ── WANDER: rastgele waypoint'e git ─────────────────────
+        bot._orbitSide = null;
+        tx = bot._wpX; ty = bot._wpY;
+        const dx = tx - bot.x, dy = ty - bot.y;
         if (dx * dx + dy * dy < 100 * 100) {
             bot._wpX = 300 + Math.random() * 4400;
             bot._wpY = 300 + Math.random() * 4400;
@@ -143,18 +171,16 @@ function _updateBotAI(bot, room) {
         }
     }
 
+    // ── Açı güncelle ─────────────────────────────────────────
     const ta = Math.atan2(ty - bot.y, tx - bot.x);
     let da = ta - bot.angle;
     while (da >  Math.PI) da -= 2 * Math.PI;
     while (da < -Math.PI) da += 2 * Math.PI;
     bot.angle += Math.sign(da) * Math.min(Math.abs(da), BOT_TURN);
 
-    // Occasional boost when chasing
-    bot._boostTick = (bot._boostTick || 0) + 1;
-    const boosting = chasing && bot._boostTick % 60 < 20;
-    const spd = boosting ? BOT_SPEED * 1.5 : BOT_SPEED;
+    // ── Hareket ──────────────────────────────────────────────
+    const spd = boosting ? BOT_BOOST_SPEED : BOT_SPEED;
     bot.boosting = boosting;
-
     bot.x = Math.max(80, Math.min(4920, bot.x + Math.cos(bot.angle) * spd));
     bot.y = Math.max(80, Math.min(4920, bot.y + Math.sin(bot.angle) * spd));
     bot._dirty = true;

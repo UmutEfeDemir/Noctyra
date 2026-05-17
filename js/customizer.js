@@ -48,9 +48,11 @@ const _custIsMobile = () => window.innerWidth <= 640;
 
 function _updateShipName() {
     const el = document.getElementById('custShipName');
-    if (!el) return;
-    const key = SHIP_TYPE_OPTIONS.find(o => o.id === playerShipConfig.shipType)?.i18nKey;
-    el.textContent = key ? t(key) : '';
+    if (el) {
+        const key = SHIP_TYPE_OPTIONS.find(o => o.id === playerShipConfig.shipType)?.i18nKey;
+        el.textContent = key ? t(key) : '';
+    }
+    _syncMobileCard();
 }
 
 function showCustomizer() {
@@ -82,6 +84,33 @@ function _closeCustPanel() {
     document.getElementById('shipCustomizer').classList.remove('cust-open');
     document.getElementById('custToggleBtn').classList.remove('cust-open');
     document.getElementById('custBackdrop').classList.remove('cust-open');
+}
+
+// Mobile lobi ship card — keeps thumb canvas + type label in sync
+function _syncMobileCard() {
+    const tc = document.getElementById('mobileShipThumb');
+    const lb = document.getElementById('mobShipType');
+    if (tc) {
+        const pc = tc.getContext('2d');
+        const w = tc.width, h = tc.height, cx = w/2, cy = h/2;
+        pc.clearRect(0, 0, w, h);
+        pc.save();
+        pc.beginPath(); pc.arc(cx, cy, cx-1, 0, Math.PI*2); pc.clip();
+        pc.fillStyle = '#003E5C'; pc.fillRect(0, 0, w, h);
+        const c = playerShipConfig, type = c.shipType;
+        const s = type === 'savas' ? 10 : type === 'sandal' ? 9 : 12;
+        pc.translate(cx, cy - 2);
+        if      (type === 'sandal') _previewSandal(pc, s, c);
+        else if (type === 'savas')  _previewSavas(pc, s, c);
+        else                         _previewGemi(pc, s, c);
+        pc.restore();
+        pc.beginPath(); pc.arc(cx, cy, cx-1, 0, Math.PI*2);
+        pc.strokeStyle = '#8B6914'; pc.lineWidth = 1.5; pc.stroke();
+    }
+    if (lb) {
+        const key = SHIP_TYPE_OPTIONS.find(o => o.id === playerShipConfig.shipType)?.i18nKey;
+        lb.textContent = key ? t(key) : '';
+    }
 }
 
 // Mini ship preview inside the toggle button
@@ -226,8 +255,9 @@ function drawShipPreview() {
     pc.lineWidth   = 2;
     pc.stroke();
 
-    // Keep the toggle button thumb in sync
+    // Keep toggle thumb + lobi card in sync
     if (_custIsMobile()) _syncThumb();
+    _syncMobileCard();
 }
 
 function _previewSandal(pc, s, c) { nx_drawSandalG(pc, s, c); }
