@@ -79,24 +79,12 @@ app.get('/health', (_req, res) => {
 });
 
 // ── Bot system ────────────────────────────────────────────────
-const BOUNTY_SCORE = 300;
-const MAX_BOTS     = 3;
-const BOT_SPEED    = 1.65;
+const BOUNTY_SCORE    = 300;
+const BOT_FILL_TARGET = 6;   // oda bu kadar toplam oyuncuya (gerçek + bot) kadar dolar
+const BOT_SPEED       = 1.65;
 const BOT_TURN     = 0.052;
 const BOT_CHASE_R  = 480;   // px — chase real players within this radius
-const BOT_NAMES    = [
-    // Türkçe oyuncu tarzı isimler — gerçek oyuncudan ayırt edilemez
-    'xKaptanx','Reis07','DenizKurdu','SisliSular','KaraFırtına',
-    'UçanBal1k','ŞimşekGemi','AteşliKorsan','GizliReis','KanlıDalga',
-    'FırtınaKuşu','KaraDelik','DemirYumruk','YıldırımGemi','BuzKorsan',
-    'ZehirliOk','AlteınÇapa','KaplanDeniz','GüçlüSavaşçı','HızlıGemi',
-    'KükreyenDalga','EfsaneSavaşçı','KorkusuzKaptan','SesSizÖlüm','KaraYılan',
-    'AslanKorsan','VolkanDeniz','GizliHançer','UçurumKaplan','GökGürültüsü',
-    'CehennemiKorsan','BoğaGücü','YakıcıAlev','DemirKalkan','SoğukkanlıReis',
-    'SavaşKuşu','GüçKorsan','AteşTopu','YıldızAvcısı','KaraKuş',
-    'SerbestDeniz','TaşKalp','ŞahinKaptan','BüyükBalık','FırtınaAteşi',
-    'GizliAğ','HızBölgesi','DalganınSesi','KorkuYayan','EfsanelKorsan',
-];
+const BOT_NAMES = ['Elif','MrAtalay','Crashnn','Echo','Noir','Lycidas','Napolyon','Nico'];
 const BOT_CONFIGS  = [
     { hull:'#1C1C2E', sail:'#555580', accent:'#FF4466', wake:'255,68,102'   },
     { hull:'#1a3a5c', sail:'#2a5a8c', accent:'#00EEFF', wake:'0,238,255'   },
@@ -195,7 +183,9 @@ function _maintainBots(roomId) {
     const room = rooms.get(roomId);
     if (!room) return;
     const real = _realCount(room);
+
     if (real === 0) {
+        // Gerçek oyuncu kalmadı — tüm botları temizle
         for (const [id, pd] of room.players) {
             if (pd.isBot) {
                 room.players.delete(id);
@@ -204,8 +194,28 @@ function _maintainBots(roomId) {
         }
         return;
     }
-    const need = Math.max(0, Math.min(MAX_BOTS, 4 - real) - _botCount(room));
-    for (let i = 0; i < need; i++) _spawnBot(roomId);
+
+    // Hedef: toplam (gerçek + bot) = BOT_FILL_TARGET
+    // Gerçek oyuncu BOT_FILL_TARGET'e ulaşırsa bot kalmaz
+    const want = Math.max(0, Math.min(BOT_FILL_TARGET - real, MAX_ROOM_SIZE - real));
+    const have = _botCount(room);
+
+    if (have > want) {
+        // Fazla botları çıkar
+        let toKick = have - want;
+        for (const [id, pd] of room.players) {
+            if (toKick <= 0) break;
+            if (pd.isBot) {
+                room.players.delete(id);
+                io.to(roomId).emit('player_leave', { id });
+                toKick--;
+            }
+        }
+        io.to(roomId).emit('room_info', { count: _realCount(room), max: MAX_ROOM_SIZE });
+    } else if (have < want) {
+        // Eksik botları ekle
+        for (let i = 0; i < want - have; i++) _spawnBot(roomId);
+    }
 }
 
 // ── Rooms ─────────────────────────────────────────────────────

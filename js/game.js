@@ -249,7 +249,8 @@ function initSocket() {
 
     socket.on('room_info', data => {
         _updateRoomHUD();
-        if (data && data.count === 1 && player && player.alive && gameState === 'playing') {
+        // Only show winner toast when no remote players (including bots) remain
+        if (remotePlayers.size === 0 && player && player.alive && gameState === 'playing') {
             _winnerToastTimer = 300;
         }
     });
