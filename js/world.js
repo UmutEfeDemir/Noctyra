@@ -3,10 +3,11 @@
 // =============================================================
 
 function generateWorld() {
-    islands   = [];
-    coins     = [];
-    particles = [];
-    _coinId   = 0;   // reset coin ID counter — declared in game.js
+    islands    = [];
+    coins      = [];
+    particles  = [];
+    whirlpools = [];
+    _coinId    = 0;   // reset coin ID counter — declared in game.js
 
     // Islands — seeded so all clients in same room see identical layout
     for (let i = 0; i < 14; i++) {
@@ -17,6 +18,20 @@ function generateWorld() {
             tries++;
         } while (dist(x, y, PLAYER_SPAWN_X, PLAYER_SPAWN_Y) < SAFE_RADIUS && tries < 30);
         islands.push(new Island(x, y, sRnd(28, 95)));
+    }
+
+    // Whirlpools — seeded, placed away from spawn and islands
+    for (let i = 0; i < WHIRLPOOL_COUNT; i++) {
+        let x, y, tries = 0;
+        do {
+            x = sRnd(250, WORLD_W - 250);
+            y = sRnd(250, WORLD_H - 250);
+            tries++;
+        } while (tries < 25 && (
+            dist(x, y, PLAYER_SPAWN_X, PLAYER_SPAWN_Y) < SAFE_RADIUS + 150 ||
+            islands.some(isl => dist(x, y, isl.x, isl.y) < isl.r + 120)
+        ));
+        whirlpools.push(new Whirlpool(x, y));
     }
 
     // Coins + chests — seeded so all clients see the same initial positions

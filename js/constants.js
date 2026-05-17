@@ -27,6 +27,8 @@ const AI_COUNT      = 10;
 const COIN_TARGET   = 200;
 const CHEST_TARGET  = 12;
 const SPAWN_GRACE   = 120;   // invincibility frames after spawn
+const BOUNTY_SCORE  = 300;   // score threshold for bounty crown + bonus multiplier
+const WHIRLPOOL_COUNT = 5;   // number of whirlpools per world
 
 // ── COLORS ───────────────────────────────────────────────────
 // Pirate names + rndName() live in i18n.js (supports 4 languages)

@@ -110,6 +110,14 @@ function drawMinimap() {
         mmCtx.fill();
     }
 
+    // Whirlpools
+    mmCtx.fillStyle = 'rgba(0,200,255,0.70)';
+    for (const wp of whirlpools) {
+        mmCtx.beginPath();
+        mmCtx.arc(wp.x * sx, wp.y * sy, 4, 0, Math.PI * 2);
+        mmCtx.fill();
+    }
+
     // Coins (simple 2×2 dots — no per-coin draw call overhead)
     mmCtx.fillStyle = '#FFD700';
     for (const co of coins) {

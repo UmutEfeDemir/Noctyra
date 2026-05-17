@@ -296,19 +296,29 @@ class Ship {
 
         ctx.restore();
 
-        // Name tag
-        const nameY = sy - s * (this.shipType === 'savas' ? 3.2 : 2.6);
+        // Name tag + bounty crown
+        const nameY   = sy - s * (this.shipType === 'savas' ? 3.2 : 2.6);
+        const isBounty = !this.isPlayer && this.score >= (typeof BOUNTY_SCORE !== 'undefined' ? BOUNTY_SCORE : 300);
         ctx.save();
         ctx.font         = `bold ${this.isPlayer ? 14 : 11}px Georgia`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'bottom';
         ctx.strokeStyle  = 'rgba(0,0,0,0.9)';
         ctx.lineWidth    = 3;
-        ctx.fillStyle    = this.isPlayer ? '#00FF88' : c.accent;
+        ctx.fillStyle    = isBounty ? '#FFD700' : (this.isPlayer ? '#00FF88' : c.accent);
         const dsq        = (sx - canvas.width/2)**2 + (sy - canvas.height/2)**2;
         if (this.isPlayer || dsq < 450*450) {
             ctx.strokeText(this.name, sx, nameY);
             ctx.fillText  (this.name, sx, nameY);
+            if (isBounty) {
+                // Bounty crown glow
+                ctx.shadowColor = 'rgba(255,200,0,0.85)';
+                ctx.shadowBlur  = 10;
+                ctx.font        = '13px serif';
+                ctx.fillStyle   = '#FFD700';
+                ctx.fillText('💰', sx, nameY - 14);
+                ctx.shadowBlur  = 0;
+            }
         }
         ctx.restore();
     }
@@ -859,5 +869,94 @@ class Particle {
         ctx.arc(sx, sy, this.size * t, 0, Math.PI*2);
         ctx.fill();
         ctx.globalAlpha = 1;
+    }
+}
+
+// ── WHIRLPOOL ─────────────────────────────────────────────────
+class Whirlpool {
+    constructor(x, y) {
+        this.x     = x;
+        this.y     = y;
+        this.r     = 60;    // instant-kill radius
+        this.pullR = 130;   // pull-toward radius
+        this.spin  = Math.random() * Math.PI * 2;
+    }
+
+    update(dt = 1) {
+        this.spin += 0.038 * dt;
+    }
+
+    draw() {
+        const sx = this.x - camera.x;
+        const sy = this.y - camera.y;
+        if (sx < -220 || sx > canvas.width + 220 || sy < -220 || sy > canvas.height + 220) return;
+
+        ctx.save();
+        ctx.translate(sx, sy);
+
+        // Outer warning ripples
+        for (let i = 3; i >= 0; i--) {
+            ctx.save();
+            ctx.rotate(this.spin * (i % 2 === 0 ? 1 : -1) + i * 0.55);
+            ctx.globalAlpha = 0.08 + i * 0.03;
+            ctx.strokeStyle = '#00C8FF';
+            ctx.lineWidth   = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, this.pullR - i * 10, 0, Math.PI * 1.65);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Spinning vortex arms
+        for (let arm = 0; arm < 4; arm++) {
+            ctx.save();
+            ctx.rotate(this.spin * 1.4 + arm * Math.PI / 2);
+            const grad = ctx.createLinearGradient(0, 0, this.r, 0);
+            grad.addColorStop(0,   'rgba(0,10,40,0.90)');
+            grad.addColorStop(0.5, 'rgba(0,40,120,0.50)');
+            grad.addColorStop(1,   'rgba(0,80,180,0.0)');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth   = 8 - arm;
+            ctx.lineCap     = 'round';
+            ctx.beginPath();
+            ctx.arc(0, 0, this.r * (0.4 + arm * 0.18), 0, Math.PI * 0.9);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Dark center void
+        const voidGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.r * 0.55);
+        voidGrad.addColorStop(0,   'rgba(0,2,18,0.98)');
+        voidGrad.addColorStop(0.7, 'rgba(0,10,40,0.80)');
+        voidGrad.addColorStop(1,   'rgba(0,20,60,0.0)');
+        ctx.fillStyle = voidGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing inner ring
+        ctx.strokeStyle = 'rgba(0,180,255,0.35)';
+        ctx.lineWidth   = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.r * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // Returns pull vector if ship is in range, else null
+    pullForce(px, py) {
+        const dx = this.x - px, dy = this.y - py;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > this.pullR * this.pullR) return null;
+        const d   = Math.sqrt(d2);
+        const str = (1 - d / this.pullR) * 0.55;
+        return { fx: (dx / d) * str, fy: (dy / d) * str };
+    }
+
+    // True if ship is inside the kill zone
+    isInside(px, py) {
+        const dx = px - this.x, dy = py - this.y;
+        return dx * dx + dy * dy < this.r * this.r;
     }
 }

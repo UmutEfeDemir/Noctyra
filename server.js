@@ -78,6 +78,93 @@ app.get('/health', (_req, res) => {
     res.json({ ok: true, rooms: rooms.size, players: [...rooms.values()].reduce((s, r) => s + r.players.size, 0) });
 });
 
+// ── Bot system ────────────────────────────────────────────────
+const BOUNTY_SCORE = 300;
+const MAX_BOTS     = 3;
+const BOT_SPEED    = 1.45;
+const BOT_TURN     = 0.033;
+const BOT_NAMES    = [
+    'Kara Pete','Gemi Avcısı','Deniz Kurdu','Sis Adamı',
+    'Demir Kaptan','Lanet Korsan','Karanlık Gemi','Paslanmış Çapa',
+    'Köpek Balığı','Batan Yıldız',
+];
+const BOT_CONFIGS  = [
+    { hull:'#1C1C2E', sail:'#555580', accent:'#FF4466', wake:'255,68,102'   },
+    { hull:'#1a3a5c', sail:'#2a5a8c', accent:'#00EEFF', wake:'0,238,255'   },
+    { hull:'#3D0060', sail:'#7A10A0', accent:'#EE44EE', wake:'238,68,238'  },
+    { hull:'#111111', sail:'#333333', accent:'#FFD700', wake:'255,215,0'   },
+];
+const BOT_TYPES    = ['sandal','gemi','gemi','savas'];
+
+function _makeBotData() {
+    const id  = 'BOT_' + Math.random().toString(36).slice(2, 9).toUpperCase();
+    const cfg = BOT_CONFIGS[Math.floor(Math.random() * BOT_CONFIGS.length)];
+    return {
+        id, isBot: true,
+        name:     BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)],
+        config:   cfg,
+        shipType: BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)],
+        x: 400 + Math.random() * 4200,
+        y: 400 + Math.random() * 4200,
+        angle:    Math.random() * Math.PI * 2,
+        size: 13, score: 0, maxLen: 55, kills: 0,
+        boosting: false, _dirty: true,
+        _wpX: 2500, _wpY: 2500,
+    };
+}
+
+function _updateBotAI(bot) {
+    const dx = bot._wpX - bot.x, dy = bot._wpY - bot.y;
+    if (dx * dx + dy * dy < 90 * 90) {
+        bot._wpX = 300 + Math.random() * 4400;
+        bot._wpY = 300 + Math.random() * 4400;
+    }
+    const ta = Math.atan2(bot._wpY - bot.y, bot._wpX - bot.x);
+    let da = ta - bot.angle;
+    while (da >  Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    bot.angle += Math.sign(da) * Math.min(Math.abs(da), BOT_TURN);
+    bot.x = Math.max(80, Math.min(4920, bot.x + Math.cos(bot.angle) * BOT_SPEED));
+    bot.y = Math.max(80, Math.min(4920, bot.y + Math.sin(bot.angle) * BOT_SPEED));
+    bot._dirty = true;
+}
+
+function _spawnBot(roomId) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const bot = _makeBotData();
+    room.players.set(bot.id, bot);
+    io.to(roomId).emit('player_join', bot);
+}
+
+function _realCount(room) {
+    let n = 0;
+    for (const pd of room.players.values()) { if (!pd.isBot) n++; }
+    return n;
+}
+function _botCount(room) {
+    let n = 0;
+    for (const pd of room.players.values()) { if (pd.isBot) n++; }
+    return n;
+}
+
+function _maintainBots(roomId) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const real = _realCount(room);
+    if (real === 0) {
+        for (const [id, pd] of room.players) {
+            if (pd.isBot) {
+                room.players.delete(id);
+                io.to(roomId).emit('player_leave', { id });
+            }
+        }
+        return;
+    }
+    const need = Math.max(0, Math.min(MAX_BOTS, 4 - real) - _botCount(room));
+    for (let i = 0; i < need; i++) _spawnBot(roomId);
+}
+
 // ── Rooms ─────────────────────────────────────────────────────
 // rooms: Map<roomId, { players: Map<socketId, data>, seed: number, _tick: Timeout|null }>
 const rooms = new Map();
@@ -105,6 +192,7 @@ function _startTick(roomId) {
         if (!r) { clearInterval(room._tick); return; }
         const batch = [];
         for (const pd of r.players.values()) {
+            if (pd.isBot) _updateBotAI(pd);
             if (pd._dirty) {
                 batch.push({
                     id: pd.id, x: pd.x, y: pd.y,
@@ -127,12 +215,12 @@ function _deleteRoom(roomId) {
 }
 
 function findRoom() {
-    // Prefer the most-populated room that still has space (fills existing rooms before opening new ones)
+    // Count only real (non-bot) players for capacity — bots don't fill the room
     let bestId = null, bestCount = 0;
     for (const [id, room] of rooms) {
-        if (room.players.size < MAX_ROOM_SIZE && room.players.size > bestCount) {
-            bestId = id;
-            bestCount = room.players.size;
+        const real = _realCount(room);
+        if (real < MAX_ROOM_SIZE && real > bestCount) {
+            bestId = id; bestCount = real;
         }
     }
     if (bestId) { _startTick(bestId); return bestId; }
@@ -200,7 +288,7 @@ io.on('connection', socket => {
         if (code.length === 4) {
             if (!rooms.has(code)) rooms.set(code, _makeRoom());
             const r = rooms.get(code);
-            if (r.players.size >= MAX_ROOM_SIZE) { socket.emit('room_full'); return; }
+            if (_realCount(r) >= MAX_ROOM_SIZE) { socket.emit('room_full'); return; }
             _startTick(code);
             roomId = code;
         } else {
@@ -210,8 +298,8 @@ io.on('connection', socket => {
         const room = rooms.get(roomId);
 
         // Evict any ghost sockets (disconnected but not yet timed out) from the room
-        for (const [sid] of room.players) {
-            if (sid !== socket.id && !io.sockets.sockets.get(sid)) {
+        for (const [sid, pd] of room.players) {
+            if (!pd.isBot && sid !== socket.id && !io.sockets.sockets.get(sid)) {
                 room.players.delete(sid);
                 socket.to(roomId).emit('player_leave', { id: sid });
             }
@@ -229,8 +317,12 @@ io.on('connection', socket => {
         const others = [...room.players.values()].filter(p => p.id !== socket.id);
         socket.emit('room_joined', { roomId, seed: room.seed, players: others, code: roomId });
         socket.to(roomId).emit('player_join', pData);
-        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
-        console.log(`[JOIN] ${name} → ${roomId} (${room.players.size}/${MAX_ROOM_SIZE})`);
+        const real = _realCount(room);
+        io.to(roomId).emit('room_info', { count: real, max: MAX_ROOM_SIZE });
+        // Maintain bot count after player joins (bots added/removed in background)
+        setTimeout(() => _maintainBots(roomId), 800);
+        console.log(`[JOIN] ${name} → ${roomId} (${real}/${MAX_ROOM_SIZE})`);
+
     });
 
     // State update: just store latest data + mark dirty.
@@ -284,18 +376,26 @@ io.on('connection', socket => {
 
         me.kills = (me.kills || 0) + 1;
 
-        const bonus = Math.round((victim.score || 0) + 12);
-        dbSaveScore(victim.name, victim.score || 0, victim.kills || 0).catch(() => {});
+        const isBounty   = (victim.score || 0) >= BOUNTY_SCORE;
+        const bountyMult = isBounty ? 1.5 : 1;
+        const bonus      = Math.round(((victim.score || 0) + 12) * bountyMult);
+
+        if (!victim.isBot) dbSaveScore(victim.name, victim.score || 0, victim.kills || 0).catch(() => {});
         room.players.delete(victimId);
 
         socket.emit('kill_confirmed', {
             victimName:   victim.name,
             victimMaxLen: victim.maxLen || 55,
-            bonus,
+            bonus, isBounty,
         });
         io.to(roomId).emit('player_die', { id: victimId, killedBy: me?.name || '?', droppedCoins: [] });
-        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
-        console.log(`[KILL] ${me?.name} killed ${victim.name}`);
+        const realNow = _realCount(room);
+        io.to(roomId).emit('room_info', { count: realNow, max: MAX_ROOM_SIZE });
+
+        // Bot respawn after 3 s
+        if (victim.isBot) setTimeout(() => _maintainBots(roomId), 3000);
+
+        console.log(`[KILL] ${me?.name} killed ${victim.name}${isBounty ? ' 💰 BOUNTY' : ''}`);
     });
 
     socket.on('disconnect', () => {
@@ -306,10 +406,12 @@ io.on('connection', socket => {
         if (pd && pd.score > 0) dbSaveScore(pd.name, pd.score, pd.kills || 0).catch(() => {});
         room.players.delete(socket.id);
         socket.to(roomId).emit('player_leave', { id: socket.id });
-        if (room.players.size === 0) {
+        const realAfter = _realCount(room);
+        if (realAfter === 0) {
             _deleteRoom(roomId);
         } else {
-            io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
+            io.to(roomId).emit('room_info', { count: realAfter, max: MAX_ROOM_SIZE });
+            setTimeout(() => _maintainBots(roomId), 1500);
         }
         console.log(`[LEAVE] ${pd?.name || socket.id} left ${roomId}`);
     });

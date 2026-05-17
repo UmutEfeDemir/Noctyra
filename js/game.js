@@ -25,6 +25,7 @@ let socket        = null;
 let coins         = [];
 let particles     = [];
 let islands       = [];
+let whirlpools    = [];
 let _coinId       = 0;           // global coin ID counter (reset by generateWorld)
 
 // ── SCREEN SHAKE ──────────────────────────────────────────────
@@ -218,7 +219,7 @@ function initSocket() {
         if (!coins.some(c => c.id === id)) coins.push(new Coin(id, x, y, v));
     });
 
-    socket.on('kill_confirmed', ({ victimName, victimMaxLen, bonus }) => {
+    socket.on('kill_confirmed', ({ victimName, victimMaxLen, bonus, isBounty }) => {
         playSound('kill');
         screenShake(6, 18);
         addToFeed(player?.name || '?', victimName);
@@ -234,9 +235,11 @@ function initSocket() {
         gameStats.score = player.score;
         elScore.textContent = tf('score', { n: player.score });
 
-        const msg = mult > 1
-            ? tf('comboText', { n: mult }) + '  ' + tf('killMsg', { name: victimName, bonus: finalBonus })
-            : tf('killMsg', { name: victimName, bonus: finalBonus });
+        const msg = isBounty
+            ? tf('bountyKill', { bonus: finalBonus })
+            : mult > 1
+                ? tf('comboText', { n: mult }) + '  ' + tf('killMsg', { name: victimName, bonus: finalBonus })
+                : tf('killMsg', { name: victimName, bonus: finalBonus });
         showKillMsg(msg);
         updateComboDisplay();
         const _tk = parseInt(localStorage.getItem('noctyra_totalKills') || '0') + 1;
@@ -349,7 +352,15 @@ function checkCollisions() {
     // ── ISLAND collision ─────────────────────────────────────────
     for (const isl of islands) {
         if (isl.hits(player)) {
-            playerDie(null);          // playerDie() handles socket.emit('die')
+            playerDie(null);
+            return;
+        }
+    }
+
+    // ── WHIRLPOOL collision ───────────────────────────────────────
+    for (const wp of whirlpools) {
+        if (wp.isInside(player.x, player.y)) {
+            playerDie(t('whirlpool'));
             return;
         }
     }
@@ -638,6 +649,7 @@ function loop(ts) {
     drawOcean();
 
     for (const isl of islands) isl.draw();
+    for (const wp  of whirlpools) { wp.update(_dt); wp.draw(); }
     for (const co  of coins)   co.draw();
 
     if (gameState === 'playing' || gameState === 'connecting') {
@@ -648,6 +660,14 @@ function loop(ts) {
                 const sy = player.y - camera.y;
                 mouse.x  = sx + _joy.dx * 9999;
                 mouse.y  = sy + _joy.dy * 9999;
+            }
+            // Whirlpool pull: nudge mouse toward whirlpool center (fights player steering)
+            for (const wp of whirlpools) {
+                const pull = wp.pullForce(player.x, player.y);
+                if (pull) {
+                    mouse.x += pull.fx * 800;
+                    mouse.y += pull.fy * 800;
+                }
             }
             player.update();
             if (boostActive  && !_prevBoosting) startBoostSound();
