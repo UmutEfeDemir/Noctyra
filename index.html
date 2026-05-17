@@ -86,58 +86,100 @@
         </div>
     </div>
 
-    <div id="overlayContent" class="overlay-content">
-        <img src="noctyra-logo.png" class="game-logo" alt="Noctyra" onerror="this.style.display='none'">
-        <h1 data-i18n="title">NOCTYRA</h1>
-        <div class="subtitle" data-i18n="subtitle">Denizlerin En Ünlü Korsanı Ol!</div>
-        <input id="nameInput" type="text" maxlength="15"
-               placeholder="Korsan Adın..." value=""
-               data-i18n-placeholder="namePlaceholder">
-        <input id="roomCodeInput" type="text" maxlength="4"
-               placeholder="Oda Kodu (isteğe bağlı)"
-               data-i18n-placeholder="roomCodePlaceholder">
-        <button id="startBtn" onclick="startGame()" data-i18n="startBtn">YELKEN AÇ</button>
-        <div id="controls" data-i18n-html="controls">
-            Fare ile yön ver &nbsp;|&nbsp; Sol tık veya BOŞLUK: Hızlan<br>
-            Düşman gemisini bedenine çarparak batır!<br>
-            Doubloon ve sandıklar topla, gemini büyüt!
+    <!-- Server status bar -->
+    <div id="serverStatusBar">
+        <span id="serverDot" class="server-dot offline"></span>
+        <span id="serverStatusText">...</span>
+    </div>
+
+    <!-- Two-panel split layout -->
+    <div class="overlay-split">
+
+        <!-- LEFT: Menu form / Death screen -->
+        <div class="menu-left">
+            <div id="overlayContent" class="overlay-content">
+                <img src="noctyra-logo.png" class="game-logo" alt="Noctyra" onerror="this.style.display='none'">
+                <h1 data-i18n="title">NOCTYRA</h1>
+                <div class="subtitle" data-i18n="subtitle">Denizlerin En Ünlü Korsanı Ol!</div>
+
+                <div class="field-group">
+                    <div class="field-label" data-i18n="nameLabel">KORSAN ADI</div>
+                    <div class="field-row">
+                        <input id="nameInput" type="text" maxlength="15"
+                               placeholder="Korsan Adın..." value=""
+                               data-i18n-placeholder="namePlaceholder">
+                        <button id="randomNameBtn" onclick="pickRandomName()" title="Rastgele">↺</button>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <div class="field-label" data-i18n="roomLabel">ODA KODU</div>
+                    <div class="field-row">
+                        <input id="roomCodeInput" type="text" maxlength="4"
+                               placeholder="Oda Kodu (isteğe bağlı)"
+                               data-i18n-placeholder="roomCodePlaceholder">
+                        <button id="createRoomBtn" onclick="generatePrivateRoom()" data-i18n="createRoom">ODA AÇ</button>
+                    </div>
+                </div>
+
+                <button id="startBtn" onclick="startGame()" data-i18n="startBtn">YELKEN AÇ</button>
+                <div id="controls" data-i18n-html="controls">
+                    Fare ile yön ver &nbsp;|&nbsp; Sol tık veya BOŞLUK: Hızlan<br>
+                    Düşman gemisini bedenine çarparak batır!<br>
+                    Doubloon ve sandıklar topla, gemini büyüt!
+                </div>
+            </div>
         </div>
+
+        <!-- RIGHT: Ship customizer -->
+        <div class="menu-right">
+            <div id="shipCustomizer">
+                <div class="cust-ship-header">
+                    <span data-i18n="yourShip">SENİN GEMİN</span>
+                    <span class="cust-ship-name" id="custShipName"></span>
+                </div>
+                <canvas id="shipPreview" width="160" height="160"></canvas>
+                <div class="cust-row">
+                    <div class="cust-label" data-i18n="shipType">GEMİ TÜRÜ</div>
+                    <div id="typeButtons" class="type-buttons"></div>
+                </div>
+                <div class="cust-row">
+                    <div class="cust-label" data-i18n="hull">TEKNE</div>
+                    <div class="color-swatches" id="hullSwatches"></div>
+                </div>
+                <div class="cust-row">
+                    <div class="cust-label" data-i18n="sail">YELKEN</div>
+                    <div class="color-swatches" id="sailSwatches"></div>
+                </div>
+                <div class="cust-row">
+                    <div class="cust-label" data-i18n="accent">AKSAN</div>
+                    <div class="color-swatches" id="accentSwatches"></div>
+                </div>
+                <div class="cust-row">
+                    <div class="cust-label" data-i18n="wake">İZ RENGİ</div>
+                    <div class="color-swatches" id="wakeSwatches"></div>
+                </div>
+                <div class="menu-stats">
+                    <div class="stat-box">
+                        <div class="stat-label" data-i18n="bestScore">EN İYİ SKOR</div>
+                        <div class="stat-val" id="statBestScore">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label" data-i18n="totalKills">TOPLAM AV</div>
+                        <div class="stat-val" id="statTotalKills">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
-<!-- Mobile customizer backdrop + toggle button -->
-<div id="custBackdrop" onclick="toggleCustomizer()"></div>
-<button id="custToggleBtn" onclick="toggleCustomizer()">
+<!-- Kept in DOM (hidden) — customizer.js references these elements -->
+<div id="custBackdrop" style="display:none!important"></div>
+<button id="custToggleBtn" style="display:none!important">
     <canvas id="custThumb" width="36" height="36"></canvas>
-    <span id="custToggleLabel">GEMİ ÖZELLEŞTIR</span>
-    <span id="custArrow">▲</span>
 </button>
-
-<!-- Ship Customizer Panel -->
-<div id="shipCustomizer">
-    <h4 data-i18n="shipCustomTitle">GEMİ ÖZELLEŞTİR</h4>
-    <canvas id="shipPreview" width="100" height="100"></canvas>
-    <div class="cust-row">
-        <div class="cust-label" data-i18n="shipType">GEMİ TÜRÜ</div>
-        <div id="typeButtons" class="type-buttons"></div>
-    </div>
-    <div class="cust-row">
-        <div class="cust-label" data-i18n="hull">TEKNE</div>
-        <div class="color-swatches" id="hullSwatches"></div>
-    </div>
-    <div class="cust-row">
-        <div class="cust-label" data-i18n="sail">YELKEN</div>
-        <div class="color-swatches" id="sailSwatches"></div>
-    </div>
-    <div class="cust-row">
-        <div class="cust-label" data-i18n="accent">AKSAN</div>
-        <div class="color-swatches" id="accentSwatches"></div>
-    </div>
-    <div class="cust-row">
-        <div class="cust-label" data-i18n="wake">İZ RENGİ</div>
-        <div class="color-swatches" id="wakeSwatches"></div>
-    </div>
-</div>
 
 <!-- Socket.io client -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>

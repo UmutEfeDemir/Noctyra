@@ -57,6 +57,9 @@ let _connectError     = false;
 let _connectTimeout   = null;
 let _connectStartTime = 0;
 let _ping             = 0;
+let _pingPending      = false;
+let _pingT0           = 0;
+let _pingTimeoutId    = null;
 let _currentRoomCode  = '';
 
 // Delta time — set each frame so all modules can read it as a global
@@ -97,19 +100,28 @@ function initSocket() {
         reconnectionAttempts:    25,
     });
 
-    setInterval(() => {
-        if (socket && socket.connected) {
-            const t0 = Date.now();
-            socket.emit('__ping');
-            socket.once('__pong', () => {
-                _ping = Date.now() - t0;
-                const el = document.getElementById('pingDisplay');
-                if (el) {
-                    el.textContent = _ping + ' ms';
-                    el.style.color = _ping < 150 ? '#44FF88' : _ping < 250 ? '#FFD700' : '#FF6644';
-                }
-            });
+    // Ping measurement — one persistent listener avoids socket.once accumulation.
+    // _pingPending guards against sending a new ping before the previous pong arrives,
+    // which would leave stale listeners that fire with wrong timestamps.
+    socket.on('__pong', () => {
+        if (!_pingPending) return;
+        _pingPending = false;
+        if (_pingTimeoutId) { clearTimeout(_pingTimeoutId); _pingTimeoutId = null; }
+        _ping = Date.now() - _pingT0;
+        const el = document.getElementById('pingDisplay');
+        if (el) {
+            el.textContent = _ping + ' ms';
+            el.style.color = _ping < 150 ? '#44FF88' : _ping < 250 ? '#FFD700' : '#FF6644';
         }
+    });
+
+    setInterval(() => {
+        if (!socket || !socket.connected || _pingPending) return;
+        _pingPending = true;
+        _pingT0 = Date.now();
+        socket.emit('__ping');
+        // If pong never arrives (packet loss / disconnect), reset after 5s
+        _pingTimeoutId = setTimeout(() => { _pingPending = false; _pingTimeoutId = null; }, 5000);
     }, 2000);
 
     socket.on('room_joined', ({ seed, players, code }) => {
@@ -171,10 +183,12 @@ function initSocket() {
                 rp.alive = false;
                 spawnExplosion(rp.x, rp.y);
                 if (killedBy && killedBy !== player?.name) addToFeed(killedBy, rp.name);
-                const t = setTimeout(() => { remotePlayers.delete(id); _leaveTimers.delete(id); }, 4000);
-                _leaveTimers.set(id, t);
             }
-            // Add synced drop coins (even on 2nd player_die event carrying the actual drops)
+            // Always (re)schedule cleanup — even if rp was already dead from local kill check
+            _cancelLeaveTimer(id);
+            const t = setTimeout(() => { remotePlayers.delete(id); _leaveTimers.delete(id); }, 4000);
+            _leaveTimers.set(id, t);
+
             if (droppedCoins && droppedCoins.length > 0) {
                 for (const c of droppedCoins) {
                     if (!coins.some(co => co.id === c.id)) {
@@ -225,6 +239,9 @@ function initSocket() {
             : tf('killMsg', { name: victimName, bonus: finalBonus });
         showKillMsg(msg);
         updateComboDisplay();
+        const _tk = parseInt(localStorage.getItem('noctyra_totalKills') || '0') + 1;
+        localStorage.setItem('noctyra_totalKills', _tk);
+        _updateMenuStats();
     });
 
     socket.on('room_info', data => {
@@ -302,6 +319,9 @@ function checkCollisions() {
                 rp.alive = false;
                 spawnKillFX(rp.x, rp.y);
                 if (socket) socket.emit('kill', { victimId: id });
+                // Schedule local cleanup in case player_die arrives late
+                _cancelLeaveTimer(id);
+                _leaveTimers.set(id, setTimeout(() => { remotePlayers.delete(id); _leaveTimers.delete(id); }, 5000));
                 break;
             }
         }
@@ -763,6 +783,7 @@ function startGame() {
     }
     if (document.getElementById('nameInput'))
         document.getElementById('nameInput').style.borderColor = '#FFD700';
+    localStorage.setItem('noctyra_name', name);
 
     document.getElementById('overlay').classList.add('hidden');
     hideCustomizer();
@@ -981,3 +1002,54 @@ function _drawMenuShip(x, y, sz, angle, col, alpha) {
     const inp = document.getElementById('roomCodeInput');
     if (inp) inp.value = clean;
 })();
+
+// ── MENU HELPERS ──────────────────────────────────────────────
+function pickRandomName() {
+    const inp = document.getElementById('nameInput');
+    if (!inp) return;
+    inp.value = rndName();
+    localStorage.setItem('noctyra_name', inp.value);
+}
+
+function generatePrivateRoom() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    const inp = document.getElementById('roomCodeInput');
+    if (inp) inp.value = code;
+}
+
+function _updateMenuStats() {
+    const hs = parseInt(localStorage.getItem('noctyra_hs') || '0');
+    const tk = parseInt(localStorage.getItem('noctyra_totalKills') || '0');
+    const bsEl = document.getElementById('statBestScore');
+    const tkEl = document.getElementById('statTotalKills');
+    if (bsEl) bsEl.textContent = hs > 0 ? hs : '—';
+    if (tkEl) tkEl.textContent = tk > 0 ? tk : '—';
+}
+
+// ── SERVER STATUS ─────────────────────────────────────────────
+function _updateServerStatus() {
+    fetch('/health').then(r => r.json()).then(data => {
+        const dot = document.getElementById('serverDot');
+        const txt = document.getElementById('serverStatusText');
+        if (dot) { dot.className = 'server-dot'; }
+        if (txt) txt.textContent = tf('serverOnline', { n: data.players ?? 0 });
+    }).catch(() => {
+        const dot = document.getElementById('serverDot');
+        const txt = document.getElementById('serverStatusText');
+        if (dot) dot.className = 'server-dot offline';
+        if (txt) txt.textContent = t('serverOffline');
+    });
+}
+_updateServerStatus();
+setInterval(_updateServerStatus, 10000);
+
+// Restore saved name on load
+(function() {
+    const saved = localStorage.getItem('noctyra_name');
+    const inp = document.getElementById('nameInput');
+    if (saved && inp && !inp.value) inp.value = saved;
+})();
+
+_updateMenuStats();

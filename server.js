@@ -17,8 +17,8 @@ const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
     cors:         { origin: '*' },
-    pingTimeout:  20000,
-    pingInterval: 10000,
+    pingTimeout:  8000,
+    pingInterval: 5000,
     transports:   ['websocket', 'polling'],
 });
 
@@ -179,8 +179,13 @@ io.on('connection', socket => {
         if (roomId) {
             const old = rooms.get(roomId);
             if (old) {
+                // Only broadcast player_leave if the player was still in the room.
+                // If killed by another player, player_die was already sent and the
+                // player removed. Emitting player_leave again races with player_join
+                // on clients and can delete the freshly-respawned remote player.
+                const wasPresent = old.players.has(socket.id);
                 old.players.delete(socket.id);
-                socket.to(roomId).emit('player_leave', { id: socket.id });
+                if (wasPresent) socket.to(roomId).emit('player_leave', { id: socket.id });
                 if (old.players.size === 0) _deleteRoom(roomId);
                 else io.to(roomId).emit('room_info', { count: old.players.size, max: MAX_ROOM_SIZE });
             }
@@ -203,6 +208,15 @@ io.on('connection', socket => {
         }
 
         const room = rooms.get(roomId);
+
+        // Evict any ghost sockets (disconnected but not yet timed out) from the room
+        for (const [sid] of room.players) {
+            if (sid !== socket.id && !io.sockets.sockets.get(sid)) {
+                room.players.delete(sid);
+                socket.to(roomId).emit('player_leave', { id: sid });
+            }
+        }
+
         const pData = {
             id: socket.id, name, config, shipType,
             x: x || 2500, y: y || 2500,

@@ -46,23 +46,20 @@ let playerShipConfig = {
 // ── Show / hide / toggle ──────────────────────────────────────
 const _custIsMobile = () => window.innerWidth <= 640;
 
+function _updateShipName() {
+    const el = document.getElementById('custShipName');
+    if (!el) return;
+    const key = SHIP_TYPE_OPTIONS.find(o => o.id === playerShipConfig.shipType)?.i18nKey;
+    el.textContent = key ? t(key) : '';
+}
+
 function showCustomizer() {
-    if (_custIsMobile()) {
-        // Mobile: only show toggle button — panel stays closed until tapped
-        document.getElementById('custToggleBtn').style.display = 'flex';
-        _syncThumb();
-    } else {
-        document.getElementById('shipCustomizer').style.display = 'block';
-    }
+    _updateShipName();
+    if (typeof _updateMenuStats === 'function') _updateMenuStats();
 }
 
 function hideCustomizer() {
-    _closeCustPanel();
-    if (_custIsMobile()) {
-        document.getElementById('custToggleBtn').style.display = 'none';
-    } else {
-        document.getElementById('shipCustomizer').style.display = 'none';
-    }
+    // No-op: customizer is inside #overlay — hides automatically with the overlay
 }
 
 function toggleCustomizer() {
@@ -138,6 +135,7 @@ function rebuildCustomizerLang() {
             div.querySelectorAll('.type-btn').forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             playerShipConfig.shipType = opt.id;
+            _updateShipName();
             drawShipPreview();
         };
         div.appendChild(btn);
@@ -349,6 +347,7 @@ function _previewSavas(pc, s, c) {
 function initCustomizer() {
     buildTypeSelector('typeButtons', SHIP_TYPE_OPTIONS, id => {
         playerShipConfig.shipType = id;
+        _updateShipName();
     });
     buildSwatches('hullSwatches', HULL_OPTIONS, opt => {
         playerShipConfig.hull = opt;
@@ -363,6 +362,7 @@ function initCustomizer() {
         playerShipConfig.wake = opt.wake;
     });
     drawShipPreview();
+    _updateShipName();
 }
 
 initCustomizer();
