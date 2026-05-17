@@ -128,8 +128,8 @@ class Ship {
             const wy = mouse.y + camera.y;
             this.angle = lerpAngle(this.angle, Math.atan2(wy - this.y, wx - this.x), tr);
 
-            // Sync ship size to current score every frame (catches all score sources: coins, kills, boost)
-            this.size = Math.max(13, 13 + Math.min(this.score, 500) * 0.02);
+            // Size grows with sqrt(score) — noticeable early, keeps scaling late
+            this.size = 13 + Math.sqrt(Math.max(0, this.score)) * 1.2;
 
             // Boost
             this.boosting = boostActive && boostEnergy > 5 && this.maxLen > MIN_BOOST_LEN;
@@ -251,7 +251,7 @@ class Ship {
         grad.addColorStop(1,    this._wakeLo);
 
         ctx.strokeStyle = grad;
-        ctx.lineWidth   = 13;
+        ctx.lineWidth   = Math.max(9, this.size * 0.78);
         ctx.lineCap     = 'round';
         ctx.lineJoin    = 'round';
         ctx.stroke();

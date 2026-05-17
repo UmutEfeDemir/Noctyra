@@ -81,10 +81,10 @@ app.get('/health', (_req, res) => {
 // ── Bot system ────────────────────────────────────────────────
 const BOUNTY_SCORE    = 300;
 const BOT_FILL_TARGET = 6;   // oda bu kadar toplam oyuncuya (gerçek + bot) kadar dolar
-const BOT_SPEED       = 1.72; // oyuncudan biraz hızlı (BASE_SPEED=1.6)
-const BOT_BOOST_SPEED = 2.8;  // boost anı (BOOST_SPEED=3.0)
-const BOT_TURN        = 0.068; // çevik (BOOST_TURN=0.065)
-const BOT_CHASE_R     = 700;  // geniş algı yarıçapı
+const BOT_SPEED       = 1.78;
+const BOT_BOOST_SPEED = 3.1;
+const BOT_TURN        = 0.094;
+const BOT_CHASE_R     = 1400;
 const BOT_NAMES = ['Elif','MrAtalay','Crashnn','Echo','Noir','Lycidas','Napolyon','Nico'];
 const BOT_CONFIGS  = [
     { hull:'#1C1C2E', sail:'#555580', accent:'#FF4466', wake:'255,68,102'   },
@@ -115,17 +115,31 @@ function _makeBotData(room) {
         x: 400 + Math.random() * 4200,
         y: 400 + Math.random() * 4200,
         angle:    Math.random() * Math.PI * 2,
-        size: sz, score: Math.floor(Math.random() * 40), maxLen: 55 + sz * 2, kills: 0,
+        score: Math.floor(Math.random() * 40),
+        size: _botSizeFromScore(Math.floor(Math.random() * 40)),
+        maxLen: 55 + sz * 2, kills: 0,
         boosting: false, _dirty: true,
         _wpX: 2500, _wpY: 2500,
         _boostTick: 0,
     };
 }
 
+function _botSizeFromScore(score) {
+    return 13 + Math.sqrt(Math.max(0, score)) * 1.2;
+}
+
 function _updateBotAI(bot, room) {
     bot._boostTick = (bot._boostTick || 0) + 1;
 
-    // ── En yakın gerçek oyuncuyu bul ──────────────────────────
+    // Gradual score growth (simulates coin eating) — every 90 ticks ≈ 4.5 s
+    if (bot._boostTick % 90 === 0) {
+        bot.score   = Math.min(900, (bot.score || 0) + 3);
+        bot.size    = _botSizeFromScore(bot.score);
+        bot.maxLen  = Math.min(700, 55 + bot.score * 0.55);
+        bot._dirty  = true;
+    }
+
+    // Find nearest real player within chase radius
     let target = null;
     let bestD2 = BOT_CHASE_R * BOT_CHASE_R;
     for (const pd of room.players.values()) {
@@ -140,27 +154,31 @@ function _updateBotAI(bot, room) {
     if (target) {
         const dist = Math.sqrt(bestD2);
 
-        if (dist < 150) {
-            // ── ORBIT: hedefin çevresinde dönerek trail'ini kes ──
-            // Hedefin sağına ya da soluna çıkmaya çalış
+        if (dist < 160) {
+            // ORBIT: tightly circle the target, always boosting to cut trail
             bot._orbitSide = bot._orbitSide || (Math.random() < 0.5 ? 1 : -1);
+            if (bot._boostTick % 90 === 0) bot._orbitSide *= -1;
             const perpAngle = target.angle + (Math.PI / 2) * bot._orbitSide;
-            tx = target.x + Math.cos(perpAngle) * 120;
-            ty = target.y + Math.sin(perpAngle) * 120;
-            // Çok yaklaşınca taraf değiştir
-            if (bot._boostTick % 120 === 0) bot._orbitSide *= -1;
-            boosting = bot._boostTick % 40 < 18; // orbit'te sıkça boost
-        } else {
-            // ── INTERCEPT: hedefin ilerisini tahmin et ───────────
-            // Mesafeye göre lead miktarı — uzaktayken daha az öne bak
-            const lead = Math.min(dist * 0.45, 220);
+            tx = target.x + Math.cos(perpAngle) * 85;
+            ty = target.y + Math.sin(perpAngle) * 85;
+            boosting = true; // always boost in close combat
+        } else if (dist < 500) {
+            // INTERCEPT: lead target aggressively, always boost
+            bot._orbitSide = null;
+            const lead = Math.min(dist * 0.5, 260);
             tx = target.x + Math.cos(target.angle) * lead;
             ty = target.y + Math.sin(target.angle) * lead;
-            // 300px içindeyken agresif boost
-            boosting = dist < 320 && bot._boostTick % 50 < 22;
+            boosting = true;
+        } else {
+            // APPROACH: head straight for target, occasional boost
+            bot._orbitSide = null;
+            const lead = Math.min(dist * 0.3, 180);
+            tx = target.x + Math.cos(target.angle) * lead;
+            ty = target.y + Math.sin(target.angle) * lead;
+            boosting = bot._boostTick % 60 < 20;
         }
     } else {
-        // ── WANDER: rastgele waypoint'e git ─────────────────────
+        // WANDER: random waypoint
         bot._orbitSide = null;
         tx = bot._wpX; ty = bot._wpY;
         const dx = tx - bot.x, dy = ty - bot.y;
@@ -171,14 +189,13 @@ function _updateBotAI(bot, room) {
         }
     }
 
-    // ── Açı güncelle ─────────────────────────────────────────
+    // Turn toward target
     const ta = Math.atan2(ty - bot.y, tx - bot.x);
     let da = ta - bot.angle;
     while (da >  Math.PI) da -= 2 * Math.PI;
     while (da < -Math.PI) da += 2 * Math.PI;
     bot.angle += Math.sign(da) * Math.min(Math.abs(da), BOT_TURN);
 
-    // ── Hareket ──────────────────────────────────────────────
     const spd = boosting ? BOT_BOOST_SPEED : BOT_SPEED;
     bot.boosting = boosting;
     bot.x = Math.max(80, Math.min(4920, bot.x + Math.cos(bot.angle) * spd));
@@ -237,7 +254,7 @@ function _maintainBots(roomId) {
                 toKick--;
             }
         }
-        io.to(roomId).emit('room_info', { count: _realCount(room), max: MAX_ROOM_SIZE });
+        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
     } else if (have < want) {
         // Eksik botları ekle
         for (let i = 0; i < want - have; i++) _spawnBot(roomId);
@@ -358,7 +375,7 @@ io.on('connection', socket => {
                 if (realOld === 0) {
                     _deleteRoom(oldRId);
                 } else {
-                    io.to(oldRId).emit('room_info', { count: realOld, max: MAX_ROOM_SIZE });
+                    io.to(oldRId).emit('room_info', { count: old.players.size, max: MAX_ROOM_SIZE });
                     setTimeout(() => _maintainBots(oldRId), 1500);
                 }
             }
@@ -402,8 +419,7 @@ io.on('connection', socket => {
         const others = [...room.players.values()].filter(p => p.id !== socket.id);
         socket.emit('room_joined', { roomId, seed: room.seed, players: others, code: roomId });
         socket.to(roomId).emit('player_join', pData);
-        const real = _realCount(room);
-        io.to(roomId).emit('room_info', { count: real, max: MAX_ROOM_SIZE });
+        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
         // Maintain bot count after player joins (bots added/removed in background)
         setTimeout(() => _maintainBots(roomId), 800);
         console.log(`[JOIN] ${name} → ${roomId} (${real}/${MAX_ROOM_SIZE})`);
@@ -446,7 +462,7 @@ io.on('connection', socket => {
         room.players.delete(socket.id);
         socket.to(roomId).emit('player_die', { id: socket.id, killedBy, droppedCoins: droppedCoins || [] });
         const realAfterDie = _realCount(room);
-        io.to(roomId).emit('room_info', { count: realAfterDie, max: MAX_ROOM_SIZE });
+        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
         if (realAfterDie === 0) {
             _deleteRoom(roomId);
         } else {
@@ -480,8 +496,7 @@ io.on('connection', socket => {
             bonus, isBounty,
         });
         io.to(roomId).emit('player_die', { id: victimId, killedBy: me?.name || '?', droppedCoins: [] });
-        const realNow = _realCount(room);
-        io.to(roomId).emit('room_info', { count: realNow, max: MAX_ROOM_SIZE });
+        io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
 
         // Bot respawn after 3 s
         if (victim.isBot) setTimeout(() => _maintainBots(roomId), 3000);
@@ -501,7 +516,7 @@ io.on('connection', socket => {
         if (realAfter === 0) {
             _deleteRoom(roomId);
         } else {
-            io.to(roomId).emit('room_info', { count: realAfter, max: MAX_ROOM_SIZE });
+            io.to(roomId).emit('room_info', { count: room.players.size, max: MAX_ROOM_SIZE });
             setTimeout(() => _maintainBots(roomId), 1500);
         }
         console.log(`[LEAVE] ${pd?.name || socket.id} left ${roomId}`);
